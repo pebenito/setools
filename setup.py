@@ -13,8 +13,14 @@ from Cython.Build import cythonize
 lib_dirs: list[str] = ['.', '/usr/lib64', '/usr/lib', '/usr/local/lib']
 include_dirs: list[str] = []
 
-userspace_src = os.getenv("USERSPACE_SRC", "")
-if userspace_src:
+test_toolchain: str | None = os.getenv("TEST_TOOLCHAIN")
+userspace_src: str | None = os.getenv("USERSPACE_SRC")
+if test_toolchain:
+    toolchain_path = Path(test_toolchain)
+    include_dirs.insert(0, str(toolchain_path / "usr/include"))
+    lib_dirs.insert(0, str(toolchain_path / "lib"))
+    lib_dirs.insert(1, str(toolchain_path / "usr/lib"))
+elif userspace_src:
     userspace_path = Path(userspace_src)
     include_dirs.insert(0, str(userspace_path / "libsepol/include"))
     include_dirs.insert(1, str(userspace_path / "libselinux/include"))

@@ -194,13 +194,16 @@ def _do_compile(source_file: str, output_file: str, /, *, mls: bool = True,
     Return:
     A SELinuxPolicy object.
     """
+    test_toolchain = os.getenv("TEST_TOOLCHAIN")
     user_src = os.getenv("USERSPACE_SRC")
     checkpol = os.getenv("CHECKPOLICY")
 
-    if user_src:
-        command = [user_src + "/checkpolicy/checkpolicy"]
-    elif checkpol:
+    if checkpol:
         command = [checkpol]
+    elif test_toolchain:
+        command = [test_toolchain + "/usr/bin/checkpolicy"]
+    elif user_src:
+        command = [user_src + "/checkpolicy/checkpolicy"]
     else:
         command = ["/usr/bin/checkpolicy"]
 
