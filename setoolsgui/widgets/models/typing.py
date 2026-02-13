@@ -2,7 +2,7 @@
 
 import abc
 
-from PyQt6 import QtCore, QtGui
+from ...shim import QtCore, QtGui
 
 # These are all of the return types for the standard QtCore.Qt.ItemDataRole roles
 # for the data method in the models.

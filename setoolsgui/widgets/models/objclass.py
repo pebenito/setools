@@ -5,12 +5,12 @@
 #
 from itertools import chain
 
-from PyQt6 import QtCore
 import setools
 
+from ...shim import QtCore
+from .. import details
 from .modelroles import ModelRoles
 from .table import SEToolsTableModel
-from .. import details
 
 __all__ = ("ObjClassTable",)
 

@@ -5,13 +5,13 @@
 #
 from contextlib import suppress
 
-from PyQt6 import QtCore
 import setools
 from setools.exception import RuleNotConditional, RuleUseError
 
+from ...shim import QtCore
+from .. import details
 from .modelroles import ModelRoles
 from .table import SEToolsTableModel
-from .. import details
 
 __all__ = ("TERuleTable",)
 

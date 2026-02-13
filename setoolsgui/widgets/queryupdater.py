@@ -7,9 +7,9 @@ import logging
 import typing
 
 import networkx as nx
-from PyQt6 import QtCore, QtGui, QtWidgets
 import setools
 
+from ..shim import QtCore, QtGui, QtSignal, QtWidgets
 from . import models
 
 Q = typing.TypeVar("Q", bound=setools.PolicyQuery)
@@ -40,9 +40,9 @@ class QueryResultsUpdater(QtCore.QObject, typing.Generic[Q, R]):
     raw_line    (str) A string to be appended to the raw results.
     """
 
-    failed = QtCore.pyqtSignal(str)
-    finished = QtCore.pyqtSignal(int)
-    raw_line = QtCore.pyqtSignal(str)
+    failed = QtSignal(str)
+    finished = QtSignal(int)
+    raw_line = QtSignal(str)
 
     def __init__(self, query: Q, /, *,
                  table_model: models.SEToolsTableModel | None = None,
@@ -119,8 +119,8 @@ class BrowserUpdater(QtCore.QObject, typing.Generic[A, R, N]):
 
     """Thread for processing additional analysis for the browser."""
 
-    failed = QtCore.pyqtSignal(str)
-    result = QtCore.pyqtSignal(list)
+    failed = QtSignal(str)
+    result = QtSignal(list)
 
     query: A
     render: BrowserRenderFunction

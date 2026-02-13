@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 
-from PyQt6 import QtCore, QtWidgets
 import setools
 
+from ..shim import QtCore, QtWidgets
 from . import criteria, models, tab
 
 

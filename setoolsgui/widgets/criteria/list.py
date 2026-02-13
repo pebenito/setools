@@ -2,8 +2,7 @@
 
 from contextlib import suppress
 
-from PyQt6 import QtCore, QtWidgets
-
+from ...shim import QtCore, QtSignal, QtWidgets
 from .. import models, views
 from .criteria import CriteriaWidget
 
@@ -19,9 +18,9 @@ class ListWidget(CriteriaWidget):
 
     """Base class for QListView criteria widgets."""
 
-    equal_toggled = QtCore.pyqtSignal(bool)
-    selectionChanged = QtCore.pyqtSignal(list)
-    subset_toggled = QtCore.pyqtSignal(bool)
+    equal_toggled = QtSignal(bool)
+    selectionChanged = QtSignal(list)
+    subset_toggled = QtSignal(bool)
 
     def __init__(self, title: str, query, attrname: str, model: models.SEToolsTableModel,
                  enable_equal: bool = False, enable_subset: bool = False,

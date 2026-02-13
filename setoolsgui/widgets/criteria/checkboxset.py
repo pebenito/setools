@@ -3,8 +3,7 @@
 import collections
 from contextlib import suppress
 
-from PyQt6 import QtCore, QtWidgets
-
+from ...shim import QtCore, QtSignal, QtWidgets
 from .criteria import CriteriaWidget
 
 __all__ = ("CheckboxSetWidget",)
@@ -21,7 +20,7 @@ class CheckboxSetWidget(CriteriaWidget):
     buttons will not change the state of the checkbox.
     """
 
-    selectionChanged = QtCore.pyqtSignal(list)
+    selectionChanged = QtSignal(list)
 
     @property
     def has_errors(self) -> bool:

@@ -3,10 +3,10 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 #
 #
-from PyQt6 import QtCore, QtGui, QtWidgets
 import setools
 
 from .. import details, models
+from ...shim import QtCore, QtGui, QtWidgets
 
 __all__ = ("SEToolsTreeWidget",)
 

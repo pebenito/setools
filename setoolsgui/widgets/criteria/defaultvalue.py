@@ -2,9 +2,9 @@
 from contextlib import suppress
 import typing
 
-from PyQt6 import QtWidgets
 import setools
 
+from ...shim import QtWidgets
 from .combobox import ComboBoxWidget
 
 __all__ = ("DefaultValues",)

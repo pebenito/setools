@@ -6,8 +6,7 @@ import enum
 import setools
 import typing
 
-from PyQt6 import QtCore, QtWidgets
-
+from ...shim import QtSignal, QtWidgets
 from .criteria import CriteriaWidget
 
 E = typing.TypeVar("E", bound=enum.Enum)
@@ -22,7 +21,7 @@ class RadioEnumWidget(CriteriaWidget, typing.Generic[E]):
     radio buttons.
     """
 
-    selectionChanged = QtCore.pyqtSignal(enum.Enum)
+    selectionChanged = QtSignal(enum.Enum)
 
     def __init__(self, title: str, query: setools.PolicyQuery, attrname: str, enum_class: type[E],
                  colspan: int = 1, parent: QtWidgets.QWidget | None = None) -> None:

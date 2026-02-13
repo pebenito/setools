@@ -2,9 +2,9 @@
 
 import typing
 
-from PyQt6 import QtWidgets
 import setools
 
+from ...shim import QtWidgets
 from .criteria import OptionsPlacement
 from .ranged import RangedWidget
 

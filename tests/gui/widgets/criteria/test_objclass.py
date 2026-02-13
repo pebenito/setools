@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: GPL-2.0-only
 from typing import cast
 
-from PyQt6 import QtCore
 import pytest
 from pytestqt.qtbot import QtBot
 
+from setoolsgui.shim import QtCore
 from setoolsgui.widgets.criteria.objclass import ObjClassList, ObjClassName
 from setoolsgui.widgets.models import ObjClassTable
 

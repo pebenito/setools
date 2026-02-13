@@ -4,9 +4,9 @@ from contextlib import suppress
 import itertools
 import typing
 
-from PyQt6 import QtCore, QtWidgets
 import setools
 
+from ...shim import QtCore, QtSignal, QtWidgets
 from .. import models
 from .criteria import CriteriaWidget, OptionsPlacement
 from .list import ListWidget
@@ -93,7 +93,7 @@ class TypeName(NameWidget):
     of the specified query.  This supports inputs of types.
     """
 
-    indirect_toggled = QtCore.pyqtSignal(bool)
+    indirect_toggled = QtSignal(bool)
 
     def __init__(self, title: str, query: setools.PolicyQuery, attrname: str, /, *,
                  parent: QtWidgets.QWidget | None = None,

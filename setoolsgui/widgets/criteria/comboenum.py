@@ -3,9 +3,9 @@
 import enum
 import typing
 
-from PyQt6 import QtWidgets
 import setools
 
+from ...shim import QtWidgets
 from .combobox import ComboBoxWidget
 
 E = typing.TypeVar("E", bound=enum.Enum)

@@ -7,9 +7,9 @@ import copy
 import logging
 import typing
 
-from PyQt6 import QtCore, QtGui, QtWidgets
 import setools
 
+from ..shim import QtCore, QtGui, QtWidgets
 from . import models, views
 
 # "" to handle unset

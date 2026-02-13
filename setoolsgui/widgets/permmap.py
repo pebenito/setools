@@ -4,9 +4,9 @@
 import copy
 import logging
 
-from PyQt6 import QtCore, QtGui, QtWidgets
 from setools import PermissionMap
 
+from ..shim import QtCore, QtGui, QtSignal, QtWidgets
 from . import models, views
 
 
@@ -25,8 +25,8 @@ class PermissionMapEditor(QtWidgets.QDialog):
                 behavior.
     """
 
-    apply_permmap = QtCore.pyqtSignal(PermissionMap)
-    class_toggle = QtCore.pyqtSignal(bool)
+    apply_permmap = QtSignal(PermissionMap)
+    class_toggle = QtSignal(bool)
 
     def __init__(self, perm_map: PermissionMap, edit: bool = False,
                  parent: QtWidgets.QWidget | None = None) -> None:

@@ -1,8 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 import typing
 
-from PyQt6 import QtWidgets
-
+from ...shim import QtWidgets
 from .name import NameWidget
 
 # Regex for exact matches

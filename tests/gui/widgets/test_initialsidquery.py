@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: GPL-2.0-only
 import typing
 
-from PyQt6 import QtWidgets
 import pytest
 from pytestqt.qtbot import QtBot
 
 import setools
+from setoolsgui.shim import QtWidgets
 from setoolsgui.widgets.initsidquery import InitialSIDQueryTab
 from setoolsgui.widgets import criteria
 

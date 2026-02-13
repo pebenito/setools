@@ -2,7 +2,7 @@
 import enum
 
 
-from PyQt6 import QtCore
+from ...shim import QtCore
 
 __all__ = ("ModelRoles",)
 

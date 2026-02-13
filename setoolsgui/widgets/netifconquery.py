@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 
-from PyQt6 import QtWidgets
 import setools
 
+from ..shim import QtWidgets
 from . import criteria, models, tab
 
 __all__ = ("NetifconQueryTab",)

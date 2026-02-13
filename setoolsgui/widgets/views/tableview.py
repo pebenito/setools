@@ -5,9 +5,8 @@
 #
 import csv
 
-from PyQt6 import QtCore, QtGui, QtWidgets
-
 from .. import models
+from ...shim import QtCore, QtGui, QtWidgets
 
 __all__ = ("SEToolsTableView",)
 

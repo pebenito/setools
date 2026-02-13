@@ -6,8 +6,7 @@
 import logging
 import typing
 
-from PyQt6 import QtCore
-
+from ...shim import QtCore
 from .modelroles import ModelRoles
 from .typing import AllStdDataTypes, ContextMenuType, MetaclassFix
 

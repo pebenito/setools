@@ -1,9 +1,9 @@
 
 from contextlib import suppress
 
-from PyQt6 import QtWidgets
 import setools
 
+from ...shim import QtWidgets
 from .criteria import CriteriaWidget
 
 __all__ = ("ComboBoxWidget",)

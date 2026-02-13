@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 import typing
 
-from PyQt6 import QtWidgets
 import setools
 
+from ...shim import QtWidgets
 from .checkboxset import CheckboxSetWidget
 
 # Checked by default:

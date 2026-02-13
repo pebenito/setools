@@ -5,9 +5,9 @@
 #
 import stat
 
-from PyQt6 import QtCore
 import setools
 
+from ...shim import QtCore
 from .. import details
 from .modelroles import ModelRoles
 from .table import SEToolsTableModel

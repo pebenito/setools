@@ -4,7 +4,7 @@ import enum
 import logging
 import typing
 
-from PyQt6 import QtWidgets
+from ...shim import QtWidgets
 
 __all__ = ('CriteriaWidget', 'OptionsPlacement')
 

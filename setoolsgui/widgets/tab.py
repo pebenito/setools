@@ -6,9 +6,9 @@ import enum
 import logging
 import typing
 
-from PyQt6 import QtCore, QtGui, QtWidgets
 import setools
 
+from ..shim import QtCore, QtGui, QtWidgets
 from . import criteria, exception, models, util, views
 from .queryupdater import BrowserUpdater, ChildrenData, QueryResultsUpdater
 

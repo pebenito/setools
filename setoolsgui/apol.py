@@ -11,10 +11,10 @@ import os
 import sys
 import typing
 
-from PyQt6 import QtCore, QtGui, QtWidgets
 import setools
 
 from . import config, widgets
+from .shim import QtCore, QtGui, QtSignal, QtWidgets
 
 # Supported analyses.  These are not directly used here, but
 # will init the tab registry in widgets.tab for apol's analyses.
@@ -66,8 +66,8 @@ class ApolWorkspace(QtWidgets.QTabWidget):
     policy: setools.SELinuxPolicy | None
     permmap: setools.PermissionMap | None
 
-    policy_changed = QtCore.pyqtSignal(setools.SELinuxPolicy)
-    permmap_changed = QtCore.pyqtSignal(setools.PermissionMap)
+    policy_changed = QtSignal(setools.SELinuxPolicy)
+    permmap_changed = QtSignal(setools.PermissionMap)
 
     def __init__(self, parent: QtWidgets.QWidget | None = None) -> None:
         # __init__ here to type narrow the parent to the Apol main window

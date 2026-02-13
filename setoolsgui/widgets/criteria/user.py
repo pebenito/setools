@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 
-from PyQt6 import QtCore, QtWidgets
 import setools
 
+from ...shim import QtSignal, QtWidgets
 from .criteria import OptionsPlacement
 from .name import NameWidget
 
@@ -19,7 +19,7 @@ class UserName(NameWidget):
     of the specified query.  This supports inputs of users.
     """
 
-    indirect_toggled = QtCore.pyqtSignal(bool)
+    indirect_toggled = QtSignal(bool)
 
     def __init__(self, title: str, query: setools.PolicyQuery, attrname: str, /, *,
                  parent: QtWidgets.QWidget | None = None,

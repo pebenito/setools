@@ -3,9 +3,9 @@
 from contextlib import suppress
 import typing
 
-from PyQt6 import QtCore, QtWidgets
 import setools
 
+from ..shim import QtCore, QtSignal, QtWidgets
 from . import criteria, tab
 from .excludetypes import ExcludeTypes
 from .helpdialog import HtmlHelpDialog
@@ -322,7 +322,7 @@ class InfoFlowOptions(criteria.CriteriaWidget):
     """
 
     has_errors: typing.Final[bool] = False
-    result_limit_changed = QtCore.pyqtSignal(int)
+    result_limit_changed = QtSignal(int)
 
     def __init__(self, query: setools.InfoFlowAnalysis,
                  parent: QtWidgets.QWidget | None = None) -> None:

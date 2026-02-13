@@ -5,7 +5,7 @@ import traceback
 import types
 import typing
 
-from PyQt6 import QtWidgets
+from ..shim import QtWidgets
 
 __all__: typing.Final[tuple[str, ...]] = ("QMessageOnException",)
 

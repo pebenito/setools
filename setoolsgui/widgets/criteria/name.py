@@ -2,8 +2,7 @@
 
 from contextlib import suppress
 
-from PyQt6 import QtCore, QtGui, QtWidgets
-
+from ...shim import QtCore, QtGui, QtSignal, QtWidgets
 from .criteria import CriteriaWidget, OptionsPlacement
 
 # regex default setting (unchecked)
@@ -22,11 +21,11 @@ class NameWidget(CriteriaWidget):
     # Is it required that this be filled out?
     required: bool = False
 
-    editingFinished = QtCore.pyqtSignal(object)
+    editingFinished = QtSignal(object)
     # This signal is only emitted if the entered text is valid and
     # saved to the query.  The object saved in the query is provided.
 
-    regex_toggled = QtCore.pyqtSignal(bool)
+    regex_toggled = QtSignal(bool)
 
     #
     # Overridden methods

@@ -3,9 +3,9 @@
 from collections import OrderedDict
 from contextlib import suppress
 
-from PyQt6 import QtWidgets
 import setools
 
+from ...shim import QtWidgets
 from .criteria import OptionsPlacement
 from .name import NameWidget
 

@@ -3,9 +3,9 @@
 #
 # SPDX-License-Identifier: LGPL-2.1-only
 
-from PyQt6 import QtCore, QtGui, QtWidgets
 import setools
 
+from ..shim import QtCore, QtGui, QtWidgets
 from . import tab
 
 __all__ = ("SummaryTab",)

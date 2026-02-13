@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 from itertools import chain
 
-from PyQt6 import QtGui, QtWidgets
+from ...shim import QtGui, QtWidgets
 import setools
 
 from . import util

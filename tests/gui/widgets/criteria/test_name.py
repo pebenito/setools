@@ -2,10 +2,10 @@
 from typing import Dict, Final, Union
 from unittest.mock import PropertyMock
 
-from PyQt6 import QtGui
 import pytest
 from pytestqt.qtbot import QtBot
 
+from setoolsgui.shim import QtGui
 from setoolsgui.widgets.criteria.criteria import OptionsPlacement
 from setoolsgui.widgets.criteria.name import NameWidget, REGEX_DEFAULT_CHECKED
 

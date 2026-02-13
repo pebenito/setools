@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: GPL-2.0-only
-from PyQt6 import QtCore
 import pytest
 from pytestqt.qtbot import QtBot
 
+from setoolsgui.shim import QtCore
 from setoolsgui.widgets import criteria
 
 

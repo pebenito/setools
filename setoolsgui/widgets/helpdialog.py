@@ -2,7 +2,7 @@
 
 from importlib import resources as pkg_resources
 
-from PyQt6 import QtCore, QtWidgets
+from ..shim import QtCore, QtWidgets
 
 __all__ = ("HtmlHelpDialog",)
 
