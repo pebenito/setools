@@ -100,6 +100,10 @@ jobs:
       run: |
         # confirm python version
         python --version
-        python -m tox -e ${{ matrix.tox }}
+        if [ -z "${{ matrix.qt }}" ]; then
+          python -m tox -e ${{ matrix.tox }}
+        else
+          python -m tox -e ${{ matrix.tox }}-${{ matrix.qt }}
+        fi
       env:
         LD_LIBRARY_PATH: "${{env.SEPOL_SRC}}/src:${{env.SELINUX_SRC}}/src:${LD_LIBRARY_PATH}"
