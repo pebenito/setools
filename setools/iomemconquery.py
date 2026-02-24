@@ -72,6 +72,12 @@ class IomemconQuery(mixins.MatchContext, query.PolicyQuery):
         else:
             self._addr = policyrep.IomemconRange(*value) if value else None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"addr={self.addr!r}", f"addr_subset={self.addr_subset!r}",
+                f"addr_overlap={self.addr_overlap!r}", f"addr_superset={self.addr_superset!r}",
+                f"addr_proper={self.addr_proper!r}"] \
+            + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Iomemcon]:
         """Generator which yields all matching iomemcons."""
         self.log.info(f"Generating results from {self.policy}")

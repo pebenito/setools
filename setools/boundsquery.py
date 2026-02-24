@@ -29,6 +29,11 @@ class BoundsQuery(query.PolicyQuery):
     child = CriteriaDescriptor[policyrep.Type]("child_regex")
     child_regex: bool = False
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"ruletype={self.ruletype!r}", f"parent={self.parent!r}",
+                f"parent_regex={self.parent_regex!r}", f"child={self.child!r}",
+                f"child_regex={self.child_regex!r}"]
+
     def results(self) -> Iterable[policyrep.Bounds]:
         """Generator which yields all matching *bounds statements."""
         self.log.info(f"Generating bounds results from {self.policy}")

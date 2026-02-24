@@ -72,6 +72,12 @@ class IoportconQuery(mixins.MatchContext, query.PolicyQuery):
         else:
             self._ports = policyrep.IoportconRange(*value) if value else None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"ports={self.ports!r}", f"ports_subset={self.ports_subset!r}",
+                f"ports_overlap={self.ports_overlap!r}", f"ports_superset={self.ports_superset!r}",
+                f"ports_proper={self.ports_proper!r}"] \
+            + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Ioportcon]:
         """Generator which yields all matching ioportcons."""
         self.log.info(f"Generating results from {self.policy}")

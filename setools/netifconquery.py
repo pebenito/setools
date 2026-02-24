@@ -44,6 +44,9 @@ class NetifconQuery(mixins.MatchContext, mixins.MatchName, query.PolicyQuery):
 
     required_platform = policyrep.PolicyTarget.selinux
 
+    def _build_repr_args(self) -> list[str]:
+        return self._build_name_repr_args() + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Netifcon]:
         """Generator which yields all matching netifcons."""
         self.log.info(f"Generating netifcon results from {self.policy}")

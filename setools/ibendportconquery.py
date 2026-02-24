@@ -62,6 +62,10 @@ class IbendportconQuery(mixins.MatchContext, mixins.MatchName, query.PolicyQuery
         else:
             self._port = None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"port={self.port!r}"] + self._build_name_repr_args() \
+            + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Ibendportcon]:
         """Generator which yields all matching ibendportcons."""
         self.log.info(f"Generating ibendportcon results from {self.policy}")

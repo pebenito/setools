@@ -5,6 +5,7 @@
 #
 # pylint: disable=attribute-defined-outside-init,no-member
 from logging import Logger
+import re
 from typing import Any
 
 from .descriptors import CriteriaDescriptor, CriteriaSetDescriptor, CriteriaPermissionSetDescriptor
@@ -17,6 +18,9 @@ class MatchAlias:
 
     alias = CriteriaDescriptor[str]("alias_regex")
     alias_regex: bool = False
+
+    def _build_alias_repr_args(self) -> list[str]:
+        return [f"alias={self.alias!r}", f"alias_regex={self.alias_regex!r}"]
 
     def _match_alias_debug(self, log: Logger) -> None:
         """Emit log debugging info for alias matching."""
@@ -76,6 +80,14 @@ class MatchContext:
     range_superset: bool = False
     range_proper: bool = False
 
+    def _build_context_repr_args(self) -> list[str]:
+        return [f"user={self.user!r}", f"user_regex={self.user_regex!r}",
+                f"role={self.role!r}", f"role_regex={self.role_regex!r}",
+                f"type_={self.type_!r}", f"type_regex={self.type_regex!r}",
+                f"range_={self.range_!r}", f"range_subset={self.range_subset!r}",
+                f"range_overlap={self.range_overlap!r}", f"range_superset={self.range_superset!r}",
+                f"range_proper={self.range_proper!r}"]
+
     def _match_context_debug(self, log: Logger):
         """Emit log debugging info for context matching."""
         log.debug(f"{self.user=}, {self.user_regex=}")
@@ -131,6 +143,10 @@ class MatchName:
     name_regex: bool = False
     alias_deref: bool = False
 
+    def _build_name_repr_args(self) -> list[str]:
+        return [f"name={self.name!r}", f"name_regex={self.name_regex!r}",
+                f"alias_deref={self.alias_deref!r}"]
+
     def _match_name_debug(self, log: Logger) -> None:
         """Log debugging messages for name matching."""
         log.debug(f"{self.name=}, {self.name_regex=}, {self.alias_deref=}")
@@ -155,6 +171,9 @@ class MatchObjClass:
     tclass = CriteriaSetDescriptor[policyrep.ObjClass]("tclass_regex", "lookup_class")
     tclass_regex: bool = False
 
+    def _build_object_class_repr_args(self) -> list[str]:
+        return [f"tclass={self.tclass!r}", f"tclass_regex={self.tclass_regex!r}"]
+
     def _match_object_class_debug(self, log: Logger) -> None:
         """Emit log debugging info for permission matching."""
         log.debug(f"{self.tclass=}, {self.tclass_regex=}")
@@ -171,6 +190,7 @@ class MatchObjClass:
             # if there is no criteria, everything matches.
             return True
         elif self.tclass_regex:
+            assert isinstance(self.tclass, re.Pattern)
             return bool(self.tclass.search(str(obj.tclass)))
         else:
             return obj.tclass in self.tclass
@@ -184,6 +204,10 @@ class MatchPermission:
     perms_equal: bool = False
     perms_regex: bool = False
     perms_subset: bool = False
+
+    def _build_perms_repr_args(self) -> list[str]:
+        return [f"perms={self.perms!r}", f"perms_equal={self.perms_equal!r}",
+                f"perms_regex={self.perms_regex!r}", f"perms_subset={self.perms_subset!r}"]
 
     def _match_perms_debug(self, log: Logger):
         """Emit log debugging info for permission matching."""

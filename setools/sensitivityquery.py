@@ -36,6 +36,12 @@ class SensitivityQuery(MatchAlias, MatchName, PolicyQuery):
     sens_dom: bool = False
     sens_domby: bool = False
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"sens={self.sens!r}", f"sens_dom={self.sens_dom!r}",
+                f"sens_domby={self.sens_domby!r}"] \
+            + self._build_name_repr_args() \
+            + self._build_alias_repr_args()
+
     def results(self) -> Iterable[policyrep.Sensitivity]:
         """Generator which yields all matching sensitivities."""
         self.log.info(f"Generating sensitivity results from {self.policy}")

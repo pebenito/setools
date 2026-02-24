@@ -108,6 +108,17 @@ class TERuleQuery(mixins.MatchObjClass, mixins.MatchPermission, query.PolicyQuer
         else:
             self._xperms = None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"ruletype={self.ruletype!r}", f"source={self.source!r}",
+                f"source_indirect={self.source_indirect!r}", f"source_regex={self.source_regex!r}",
+                f"target={self.target!r}", f"target_indirect={self.target_indirect!r}",
+                f"target_regex={self.target_regex!r}", f"default={self.default!r}",
+                f"default_regex={self.default_regex!r}", f"boolean={self.boolean!r}",
+                f"boolean_regex={self.boolean_regex!r}", f"boolean_equal={self.boolean_equal!r}",
+                f"xperms={self.xperms!r}", f"xperms_equal={self.xperms_equal!r}"] \
+                + self._build_object_class_repr_args() \
+                + self._build_perms_repr_args()
+
     def results(self) -> Iterable[policyrep.AnyTERule]:
         """Generator which yields all matching TE rules."""
         self.log.info(f"Generating TE rule results from {self.policy}")

@@ -62,6 +62,9 @@ class PirqconQuery(mixins.MatchContext, query.PolicyQuery):
         else:
             self._irq = None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"irq={self.irq!r}"] + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Pirqcon]:
         """Generator which yields all matching pirqcons."""
         self.log.info(f"Generating results from {self.policy}")

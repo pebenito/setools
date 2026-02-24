@@ -51,6 +51,12 @@ class TypeQuery(mixins.MatchAlias, mixins.MatchName, query.PolicyQuery):
         else:
             self._permissive = bool(value)
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"attrs={self.attrs!r}", f"attrs_equal={self.attrs_equal!r}",
+                f"attrs_regex={self.attrs_regex!r}", f"permissive={self.permissive!r}"] \
+                + self._build_name_repr_args() \
+                + self._build_alias_repr_args()
+
     def results(self) -> Iterable[policyrep.Type]:
         """Generator which yields all matching types."""
         self.log.info(f"Generating type results from {self.policy}")

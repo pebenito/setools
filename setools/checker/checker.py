@@ -75,6 +75,9 @@ class PolicyChecker:
         self.checks = checks
         self._config = config
 
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}({self.policy!r}, {self.config!r})>"
+
     def run(self, output: typing.TextIO = sys.stdout) -> int:
         """Run all configured checks and print report to the file-like output."""
         failures = 0

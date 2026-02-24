@@ -41,6 +41,10 @@ class ReadOnlyKernelModules(CheckerModule):
         self.exempt_file = config.get(EXEMPT_FILE)
         self.exempt_load_domain = config.get(EXEMPT_LOAD)
 
+    def __repr__(self) -> str:
+        return (f"{self.__class__.__name__}(exempt_write_domain={self.exempt_write_domain}, "
+                f"exempt_load_domain={self.exempt_load_domain}, exempt_file={self.exempt_file})")
+
     def _collect_kernel_mods(self) -> defaultdict[policyrep.Type, set[policyrep.AVRule]]:
         self.log.debug("Collecting list of kernel module types.")
         self.log.debug(f"{self.exempt_load_domain=}")

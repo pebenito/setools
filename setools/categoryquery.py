@@ -27,6 +27,9 @@ class CategoryQuery(mixins.MatchAlias, mixins.MatchName, query.PolicyQuery):
                  will be used on the alias names.
     """
 
+    def _build_repr_args(self) -> list[str]:
+        return self._build_name_repr_args() + self._build_alias_repr_args()
+
     def results(self) -> Iterable[policyrep.Category]:
         """Generator which yields all matching categories."""
         self.log.info(f"Generating category results from {self.policy}")

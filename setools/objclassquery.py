@@ -48,6 +48,11 @@ class ObjClassQuery(mixins.MatchName, query.PolicyQuery):
     perms_indirect: bool = True
     perms_regex: bool = False
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"{self.common=}", f"{self.common_regex=}", f"{self.perms=}",
+                f"{self.perms_equal=}", f"{self.perms_indirect=}", f"{self.perms_regex=}"] \
+            + self._build_name_repr_args()
+
     def results(self) -> Iterable[policyrep.ObjClass]:
         """Generator which yields all matching object classes."""
         self.log.info(f"Generating object class results from {self.policy}")

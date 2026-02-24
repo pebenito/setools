@@ -47,6 +47,17 @@ class MLSRuleQuery(mixins.MatchObjClass, query.PolicyQuery):
     default_superset: bool = False
     default_proper: bool = False
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"ruletype={self.ruletype!r}", f"source={self.source!r}",
+                f"source_regex={self.source_regex!r}", f"source_indirect={self.source_indirect!r}",
+                f"target={self.target!r}", f"target_regex={self.target_regex!r}",
+                f"target_indirect={self.target_indirect!r}", f"default={self.default!r}",
+                f"default_overlap={self.default_overlap!r}",
+                f"default_subset={self.default_subset!r}",
+                f"default_superset={self.default_superset!r}",
+                f"default_proper={self.default_proper!r}"] \
+            + self._build_object_class_repr_args()
+
     def results(self) -> Iterable[policyrep.MLSRule]:
         """Generator which yields all matching MLS rules."""
         self.log.info(f"Generating MLS rule results from {self.policy}")

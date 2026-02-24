@@ -73,6 +73,9 @@ class EmptyTypeAttr(CheckerModule):
         else:
             self._pass_by_missing = False
 
+    def __repr__(self) -> str:
+        return (f"{self.__class__.__name__}(attr={self.attr}, missing_ok={self.missing_ok})")
+
     def run(self) -> list[policyrep.Type]:
         self.log.info(f"Checking type attribute {self.attr} is empty.")
 

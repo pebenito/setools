@@ -82,6 +82,12 @@ class IbpkeyconQuery(mixins.MatchContext, query.PolicyQuery):
         else:
             self._subnet_prefix = None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"subnet_prefix={self.subnet_prefix!r}", f"pkeys={self.pkeys!r}",
+                f"pkeys_subset={self.pkeys_subset!r}", f"pkeys_overlap={self.pkeys_overlap!r}",
+                f"pkeys_superset={self.pkeys_superset!r}", f"pkeys_proper={self.pkeys_proper!r}"] \
+            + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Ibpkeycon]:
         """Generator which yields all matching ibpkeycons."""
         self.log.info(f"Generating ibpkeycon results from {self.policy}")

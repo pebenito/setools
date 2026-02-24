@@ -62,6 +62,9 @@ class PcideviceconQuery(mixins.MatchContext, query.PolicyQuery):
         else:
             self._device = None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"device={self.device!r}"] + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Pcidevicecon]:
         """Generator which yields all matching pcidevicecons."""
         self.log.info(f"Generating results from {self.policy}")

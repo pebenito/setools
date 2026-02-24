@@ -50,6 +50,10 @@ class FSUseQuery(mixins.MatchContext, query.PolicyQuery):
     fs = CriteriaDescriptor[str]("fs_regex")
     fs_regex: bool = False
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"ruletype={self.ruletype!r}", f"fs={self.fs!r}", f"fs_regex={self.fs_regex!r}"] \
+            + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.FSUse]:
         """Generator which yields all matching fs_use_* statements."""
         self.log.info(f"Generating fs_use_* results from {self.policy}")

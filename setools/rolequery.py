@@ -37,6 +37,11 @@ class RoleQuery(mixins.MatchName, query.PolicyQuery):
     types_equal: bool = False
     types_regex: bool = False
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"types={self.types!r}", f"types_equal={self.types_equal!r}",
+                f"types_regex={self.types_regex!r}"] \
+            + self._build_name_repr_args()
+
     def results(self) -> Iterable[policyrep.Role]:
         """Generator which yields all matching roles."""
         self.log.info(f"Generating role results from {self.policy}")

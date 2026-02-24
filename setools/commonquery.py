@@ -31,6 +31,9 @@ class CommonQuery(mixins.MatchPermission, mixins.MatchName, query.PolicyQuery):
                  on the permission names instead of set logic.
     """
 
+    def _build_repr_args(self) -> list[str]:
+        return self._build_name_repr_args() + self._build_perms_repr_args()
+
     def results(self) -> Iterable[policyrep.Common]:
         """Generator which yields all matching commons."""
         self.log.info(f"Generating common results from {self.policy}")

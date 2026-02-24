@@ -3,16 +3,16 @@
 
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, NoReturn
+from typing import Any, NoReturn, TypeAlias
 
 import enum
 import ipaddress
 
-AnyConstraint = "Constraint" | "Validatetrans"
-AnyDefault = "Default" | "DefaultRange"
-AnyRBACRule = "RoleAllow" | "RoleTransition"
-AnyTERule = "AVRule" | "AVRuleXperm" | "TERule" | "FileNameTERule"
-TypeOrAttr = "Type" | "TypeAttribute"
+AnyConstraint: TypeAlias = "Constraint" | "Validatetrans"
+AnyDefault: TypeAlias = "Default" | "DefaultRange"
+AnyRBACRule: TypeAlias = "RoleAllow" | "RoleTransition"
+AnyTERule: TypeAlias = "AVRule" | "AVRuleXperm" | "TERule" | "FileNameTERule"
+TypeOrAttr: TypeAlias = "Type" | "TypeAttribute"
 
 def lookup_boolean_name_sub(name: str) -> str: ...
 
