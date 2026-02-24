@@ -41,6 +41,10 @@ class ReadOnlyExecutables(CheckerModule):
         self.exempt_file = config.get(EXEMPT_FILE)
         self.exempt_exec_domain = config.get(EXEMPT_EXEC)
 
+    def __repr__(self) -> str:
+        return (f"{self.__class__.__name__}(exempt_write_domain={self.exempt_write_domain}, "
+                f"exempt_exec_domain={self.exempt_exec_domain}, exempt_file={self.exempt_file})")
+
     def _collect_executables(self) -> defaultdict[policyrep.Type, set[policyrep.AVRule]]:
         self.log.debug("Collecting list of executable file types.")
         self.log.debug(f"{self.exempt_exec_domain=}")

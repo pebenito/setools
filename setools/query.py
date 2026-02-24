@@ -10,6 +10,7 @@ import typing
 from . import exception
 
 if typing.TYPE_CHECKING:
+    from collections.abc import Iterable
     from networkx import DiGraph
     from .policyrep import PolicyTarget, SELinuxPolicy
 
@@ -53,7 +54,15 @@ class PolicyQuery(ABC):
         self._policy = value
 
     @abstractmethod
-    def results(self) -> typing.Iterable:
+    def _build_repr_args(self) -> list[str]:
+        """Build the argument list for the __repr__ method."""
+
+    def __repr__(self) -> str:
+        args: str = ", ".join(self._build_repr_args())
+        return f"<{self.__class__.__name__}({repr(self.policy)}, {args})>"
+
+    @abstractmethod
+    def results(self) -> "Iterable":
         """
         Generator which returns the matches for the query.  This method
         should be overridden by subclasses.

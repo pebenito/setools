@@ -24,6 +24,9 @@ class PolCapQuery(mixins.MatchName, query.PolicyQuery):
                 be used for matching the name.
     """
 
+    def _build_repr_args(self) -> list[str]:
+        return self._build_name_repr_args()
+
     def results(self) -> Iterable[policyrep.PolicyCapability]:
         """Generator which yields all matching policy capabilities."""
         self.log.info(f"Generating policy capability results from {self.policy}")

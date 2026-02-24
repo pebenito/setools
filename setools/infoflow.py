@@ -143,6 +143,12 @@ class InfoFlowAnalysis(query.DirectedGraphAnalysis):
 
         self.rebuildsubgraph = True
 
+    def _build_repr_args(self) -> list[str]:
+        return [repr(self.perm_map),
+                f"source={self.source!r}", f"target={self.target!r}", f"mode={self.mode!r}",
+                f"min_weight={self.min_weight!r}", f"exclude={self.exclude!r}",
+                f"booleans={self.booleans!r}", f"depth_limit={self.depth_limit!r}"]
+
     def results(self) -> Iterable[InfoFlowPath] | Iterable["InfoFlowStep"]:
         if self.rebuildsubgraph:
             self._build_subgraph()

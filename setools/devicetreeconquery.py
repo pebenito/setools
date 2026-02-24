@@ -48,6 +48,9 @@ class DevicetreeconQuery(mixins.MatchContext, query.PolicyQuery):
 
     path: str | None = None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"path={self.path!r}"] + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Devicetreecon]:
         """Generator which yields all matching devicetreecons."""
         self.log.info(f"Generating results from {self.policy}")

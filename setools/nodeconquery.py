@@ -78,6 +78,11 @@ class NodeconQuery(mixins.MatchContext, query.PolicyQuery):
         else:
             self._network = None
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"network={self.network!r}", f"network_overlap={self.network_overlap!r}",
+                f"ip_version={self.ip_version!r}"] \
+            + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Nodecon]:
         """Generator which yields all matching nodecons."""
         self.log.info(f"Generating nodecon results from {self.policy}")

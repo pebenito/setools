@@ -36,6 +36,11 @@ class DefaultQuery(mixins.MatchObjClass, query.PolicyQuery):
     default_range = CriteriaDescriptor[policyrep.DefaultRangeValue](
         enum_class=policyrep.DefaultRangeValue)
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"ruletype={self.ruletype!r}", f"default={self.default!r}",
+                f"default_range={self.default_range!r}"] \
+            + self._build_object_class_repr_args()
+
     def results(self) -> Iterable[policyrep.AnyDefault]:
         """Generator which yields all matching default_* statements."""
         self.log.info(f"Generating default_* results from {self.policy}")

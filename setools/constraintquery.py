@@ -60,6 +60,14 @@ class ConstraintQuery(mixins.MatchObjClass, mixins.MatchPermission, query.Policy
     type_regex: bool = False
     type_indirect: bool = True
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"user={self.user!r}", f"user_regex={self.user_regex!r}", f"role={self.role!r}",
+                f"role_regex={self.role_regex!r}", f"role_indirect={self.role_indirect!r}",
+                f"type_={self.type_!r}", f"type_regex={self.type_regex!r}",
+                f"type_indirect={self.type_indirect!r}"] \
+            + self._build_object_class_repr_args() \
+            + self._build_perms_repr_args()
+
     def _match_expr(self, expr: frozenset[policyrep.User] | frozenset[policyrep.Role] |
                     frozenset[policyrep.Type], criteria, indirect: bool, regex: bool) -> bool:
         """

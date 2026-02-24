@@ -54,6 +54,11 @@ class GenfsconQuery(mixins.MatchContext, query.PolicyQuery):
     path = CriteriaDescriptor[str]("path_regex")
     path_regex: bool = False
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"fs={self.fs!r}", f"fs_regex={self.fs_regex!r}", f"path={self.path!r}",
+                f"path_regex={self.path_regex!r}", f"filetype={self.filetype!r}"] \
+            + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.Genfscon]:
         """Generator which yields all matching genfscons."""
         self.log.info(f"Generating genfscon results from {self.policy}")

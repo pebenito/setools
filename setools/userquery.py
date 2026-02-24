@@ -62,6 +62,15 @@ class UserQuery(mixins.MatchName, query.PolicyQuery):
     roles_equal: bool = False
     roles_regex: bool = False
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"level={self.level!r}", f"level_dom={self.level_dom!r}",
+                f"level_domby={self.level_domby!r}", f"level_incomp={self.level_incomp!r}",
+                f"range_={self.range_!r}", f"range_subset={self.range_subset!r}",
+                f"range_overlap={self.range_overlap!r}", f"range_superset={self.range_superset!r}",
+                f"range_proper={self.range_proper!r}", f"roles={self.roles!r}",
+                f"roles_equal={self.roles_equal!r}", f"roles_regex={self.roles_regex!r}"] \
+                + self._build_name_repr_args()
+
     def results(self) -> Iterable[policyrep.User]:
         """Generator which yields all matching users."""
         self.log.info(f"Generating user results from {self.policy}")

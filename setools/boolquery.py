@@ -38,6 +38,9 @@ class BoolQuery(mixins.MatchName, query.PolicyQuery):
         else:
             self._default = bool(value)
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"default={self.default!r}"] + self._build_name_repr_args()
+
     def results(self) -> Iterable[policyrep.Boolean]:
         """Generator which yields all Booleans matching the criteria."""
         self.log.info(f"Generating Boolean results from {self.policy}")

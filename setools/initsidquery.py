@@ -44,6 +44,9 @@ class InitialSIDQuery(mixins.MatchName, mixins.MatchContext, query.PolicyQuery):
 
     required_platform = policyrep.PolicyTarget.selinux
 
+    def _build_repr_args(self) -> list[str]:
+        return self._build_name_repr_args() + self._build_context_repr_args()
+
     def results(self) -> Iterable[policyrep.InitialSID]:
         """Generator which yields all matching initial SIDs."""
         self.log.info(f"Generating initial SID results from {self.policy}")

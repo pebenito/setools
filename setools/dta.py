@@ -202,6 +202,11 @@ class DomainTransitionAnalysis(query.DirectedGraphAnalysis):
 
         self.rebuildsubgraph = True
 
+    def _build_repr_args(self) -> list[str]:
+        return [f"source={self.source!r}", f"target={self.target!r}",
+                f"mode={self.mode!r}", f"depth_limit={self.depth_limit!r}",
+                f"exclude={self.exclude!r}", f"reverse={self.reverse!r}"]
+
     def results(self) -> Iterable[DTAPath] | Iterable[DomainTransition]:
         if self.rebuildsubgraph:
             self._build_subgraph()

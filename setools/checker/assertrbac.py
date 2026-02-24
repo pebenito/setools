@@ -63,6 +63,11 @@ class AssertRBAC(CheckerModule):
             self.log.info("Overlap in expect_target and exempt_target: "
                           f"{', '.join(i.name for i in target_exempt_expect_overlap)}")
 
+    def __repr__(self) -> str:
+        return (f"{self.__class__.__name__}(source={self.source}, target={self.target}, "
+                f"exempt_source={self.exempt_source}, exempt_target={self.exempt_target}, "
+                f"expect_source={self.expect_source}, expect_target={self.expect_target})")
+
     def run(self) -> list[policyrep.AnyRBACRule | str]:
         assert any((self.source, self.target)), "AssertRBAC no options set, this is a bug."
 

@@ -46,6 +46,9 @@ class Difference:
     #
     # Internal functions
     #
+    def __repr__(self) -> str:
+        return f"<{self.__class__.__name__}({self.left_policy!r}, {self.right_policy!r})>"
+
     def _reset_diff(self) -> None:
         """Reset diff results on policy changes."""
         raise NotImplementedError

@@ -24,6 +24,9 @@ class RoleTypesQuery(mixins.MatchName, query.PolicyQuery):
                  will be used on the type names.
     """
 
+    def _build_repr_args(self) -> list[str]:
+        return self._build_name_repr_args()
+
     def results(self) -> Iterable[policyrep.Role]:
         """Generator which yields all matching roles."""
         self.log.info(f"Generating role-types results from {self.policy}")

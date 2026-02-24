@@ -49,8 +49,6 @@ class RBACRuleQuery(mixins.MatchObjClass, query.PolicyQuery):
     _target: re.Pattern[str] | policyrep.Role | policyrep.TypeOrAttr | None = None
     target_regex: bool = False
     target_indirect: bool = True
-    tclass = CriteriaSetDescriptor[policyrep.ObjClass]("tclass_regex", "lookup_class")
-    tclass_regex: bool = False
     default = CriteriaDescriptor[policyrep.Role]("default_regex", "lookup_role")
     default_regex: bool = False
 
@@ -71,6 +69,14 @@ class RBACRuleQuery(mixins.MatchObjClass, query.PolicyQuery):
             except exception.InvalidType:
                 self._target = self.policy.lookup_role(
                     typing.cast(str | policyrep.Role, value))
+
+    def _build_repr_args(self) -> list[str]:
+        return [f"ruletype={self.ruletype!r}", f"source={self.source!r}",
+                f"source_indirect={self.source_indirect!r}", f"source_regex={self.source_regex!r}",
+                f"target={self.target!r}", f"target_indirect={self.target_indirect!r}",
+                f"target_regex={self.target_regex!r}", f"default={self.default!r}",
+                f"default_regex={self.default_regex!r}"] \
+            + self._build_object_class_repr_args()
 
     def results(self) -> Iterable[policyrep.AnyRBACRule]:
         """Generator which yields all matching RBAC rules."""
