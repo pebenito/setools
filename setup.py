@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import subprocess
 import sys
 import os
 import glob
@@ -8,9 +9,25 @@ from pathlib import Path
 from setuptools import Extension, setup
 from Cython.Build import cythonize
 
+REQUIRED_C_LIBS: tuple[str, ...] = ("libsepol", "libselinux")
+
+
+def pkg_config(lib: str, flag: str) -> list[str]:
+    """Query pkg-config for a library's compiler/linker flags."""
+    try:
+        return subprocess.check_output(
+            ["pkg-config", flag, lib], text=True,
+            stderr=subprocess.PIPE).split()
+    except FileNotFoundError:
+        sys.exit("Error: pkg-config not found. Install pkg-config.")
+    except subprocess.CalledProcessError as e:
+        print(e.stderr)
+        sys.exit(f"Error: {lib} development files not found. "
+                 f"Install {lib}-devel (RPM) or {lib}-dev (deb).")
+
 
 # Library linkage
-lib_dirs: list[str] = ['.', '/usr/lib64', '/usr/lib', '/usr/local/lib']
+lib_dirs: list[str] = ['.']
 include_dirs: list[str] = []
 
 userspace_src = os.getenv("USERSPACE_SRC", "")
@@ -20,6 +37,10 @@ if userspace_src:
     include_dirs.insert(1, str(userspace_path / "libselinux/include"))
     lib_dirs.insert(0, str(userspace_path / "libsepol/src"))
     lib_dirs.insert(1, str(userspace_path / "libselinux/src"))
+elif not os.getenv("CFLAGS") or not os.getenv("LDFLAGS"):
+    for lib in REQUIRED_C_LIBS:
+        include_dirs.extend(f[2:] for f in pkg_config(lib, "--cflags") if f.startswith("-I"))
+        lib_dirs.extend(f[2:] for f in pkg_config(lib, "--libs") if f.startswith("-L"))
 
 macros: list[tuple[str, str | int]] = [('DARWIN',1)] if sys.platform.startswith('darwin') else []
 

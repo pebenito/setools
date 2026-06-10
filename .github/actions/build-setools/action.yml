@@ -12,10 +12,10 @@ inputs:
 outputs:
   sdist-path:
     description: "Path to the built source distribution"
-    value: ${{ steps.build-sdist.outputs.sdistpath }}
+    value: ${{ steps.build.outputs.sdistpath }}
   wheel-path:
     description: "Path to the built wheel"
-    value: ${{ steps.build-wheel.outputs.wheelpath }}
+    value: ${{ steps.build.outputs.wheelpath }}
 
 runs:
   using: "composite"
@@ -39,19 +39,14 @@ runs:
             setuptools
         echo "::endgroup::"
 
-    - name: Build sdist
-      id: build-sdist
+    - name: Build artifacts
+      id: build
       shell: bash
       run: |
         echo "::group::Build sdist"
         python setup.py sdist
         echo "sdistpath=$(find dist -type f -name '*.tar.gz')" >> $GITHUB_OUTPUT
         echo "::endgroup::"
-
-    - name: Build wheel
-      shell: bash
-      id: build-wheel
-      run: |
         echo "::group::Build wheel"
         pip wheel --no-deps .
         echo "wheelpath=$(find . -type f -name '*.whl')" >> $GITHUB_OUTPUT
