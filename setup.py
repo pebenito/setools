@@ -30,14 +30,21 @@ def pkg_config(lib: str, flag: str) -> list[str]:
 lib_dirs: list[str] = ['.']
 include_dirs: list[str] = []
 
-userspace_src = os.getenv("USERSPACE_SRC", "")
-if userspace_src:
+alt_toolchain: str = os.getenv("ALT_TOOLCHAIN", "")
+userspace_src: str = os.getenv("USERSPACE_SRC", "")
+print(f"ALT_TOOLCHAIN: {alt_toolchain}, USERSPACE_SRC: {userspace_src}")
+if alt_toolchain:
+    toolchain_path = Path(alt_toolchain)
+    include_dirs.insert(0, str(toolchain_path / "usr/include"))
+    lib_dirs.insert(0, str(toolchain_path / "lib"))
+    lib_dirs.insert(1, str(toolchain_path / "usr/lib"))
+elif userspace_src:
     userspace_path = Path(userspace_src)
     include_dirs.insert(0, str(userspace_path / "libsepol/include"))
     include_dirs.insert(1, str(userspace_path / "libselinux/include"))
     lib_dirs.insert(0, str(userspace_path / "libsepol/src"))
     lib_dirs.insert(1, str(userspace_path / "libselinux/src"))
-elif not os.getenv("CFLAGS") or not os.getenv("LDFLAGS"):
+else:
     for lib in REQUIRED_C_LIBS:
         include_dirs.extend(f[2:] for f in pkg_config(lib, "--cflags") if f.startswith("-I"))
         lib_dirs.extend(f[2:] for f in pkg_config(lib, "--libs") if f.startswith("-L"))

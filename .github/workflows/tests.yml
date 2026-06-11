@@ -14,6 +14,7 @@ jobs:
     needs: build_userspace
     runs-on: ubuntu-24.04
     strategy:
+      fail-fast: false
       matrix:
         # unit tests
         python:
@@ -91,12 +92,9 @@ jobs:
       shell: bash
       run: |
         python --version
-        sudo ln -s "${{steps.dl-userspace.outputs.download-path}}/usr/bin/checkpolicy" /usr/bin/checkpolicy
-        python -m tox -e ${{ matrix.tox }}
+        tox -e ${{ matrix.tox }}
       env:
-        CPPFLAGS: "-I${{steps.dl-userspace.outputs.download-path}}/usr/include"
-        LD_LIBRARY_PATH: "${{steps.dl-userspace.outputs.download-path}}/lib:${{steps.dl-userspace.outputs.download-path}}/usr/lib:${LD_LIBRARY_PATH}"
-        LDFLAGS: "-L${{steps.dl-userspace.outputs.download-path}}/lib -L${{steps.dl-userspace.outputs.download-path}}/usr/lib"
+        ALT_TOOLCHAIN: ${{ steps.dl-userspace.outputs.download-path }}
 
     - name: Upload failed build directory artifact
       if: ${{ failure() && runner.debug }}

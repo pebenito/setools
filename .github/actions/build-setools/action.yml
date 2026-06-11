@@ -52,6 +52,4 @@ runs:
         echo "wheelpath=$(find . -type f -name '*.whl')" >> $GITHUB_OUTPUT
         echo "::endgroup::"
       env:
-        CPPFLAGS: "-I${{inputs.userspace-path}}/usr/include"
-        LD_LIBRARY_PATH: "${{inputs.userspace-path}}/lib:${{inputs.userspace-path}}/usr/lib:${LD_LIBRARY_PATH}"
-        LDFLAGS: "-L${{inputs.userspace-path}}/lib -L${{inputs.userspace-path}}/usr/lib"
+        ALT_TOOLCHAIN: ${{ inputs.userspace-path }}
