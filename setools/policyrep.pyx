@@ -10,7 +10,6 @@ from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t, uintptr_t
 from libc.stdio cimport FILE, fopen, fclose, snprintf
 from libc.stdlib cimport calloc, free
 from libc.string cimport memcpy, memset, strerror
-from posix.stat cimport S_IFBLK, S_IFCHR, S_IFDIR, S_IFIFO, S_IFREG, S_IFLNK, S_IFSOCK
 
 import dataclasses
 import logging
@@ -44,15 +43,27 @@ cdef extern from "<stdarg.h>":
 
 cdef extern from "<sys/socket.h>":
     ctypedef unsigned int socklen_t
-    cdef int AF_INET
-    cdef int AF_INET6
+    enum:
+        AF_INET
+        AF_INET6
 
 cdef extern from "<netinet/in.h>":
-    cdef int INET6_ADDRSTRLEN
-    cdef int IPPROTO_DCCP
-    cdef int IPPROTO_SCTP
-    cdef int IPPROTO_TCP
-    cdef int IPPROTO_UDP
+    enum:
+        INET6_ADDRSTRLEN
+        IPPROTO_DCCP
+        IPPROTO_SCTP
+        IPPROTO_TCP
+        IPPROTO_UDP
+
+cdef extern from "<sys/stat.h>":
+    enum:
+        S_IFBLK
+        S_IFCHR
+        S_IFDIR
+        S_IFIFO
+        S_IFREG
+        S_IFLNK
+        S_IFSOCK
 
 cdef extern from "<arpa/inet.h>":
     cdef const char *inet_ntop(int af, const void *src, char *dst, socklen_t size)
