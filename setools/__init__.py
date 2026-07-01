@@ -15,8 +15,9 @@ import logging
 
 # Python classes for policy representation
 from .policyrep import SELinuxPolicy, BoundsRuletype, ConstraintRuletype, DefaultRuletype, \
-    DefaultRangeValue, DefaultValue, FSUseRuletype, HandleUnknown, IbpkeyconRange, MLSRuletype, \
-    NodeconIPVersion, PolicyTarget, PortconProtocol, RBACRuletype, TERuletype
+    DefaultRangeValue, DefaultValue, FileContexts, FileContextsFiletype, FSUseRuletype, \
+    HandleUnknown, IbpkeyconRange, MLSRuletype, NodeconIPVersion, PolicyTarget, PortconProtocol, \
+    RBACRuletype, TERuletype
 
 # Policy representation classes for type checking purposes.  Few can be instantiated
 # outside of this library.

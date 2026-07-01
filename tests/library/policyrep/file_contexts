@@ -1,0 +1,10 @@
+/usr/bin/test0 -- user0:role0:type0:s0:c0
+/usr/lib/test1 -d user0:role0:type1:s0:c0
+/usr/sbin/test2 -c user0:role0:type2:s0:c0
+/usr/share/test3 -b user0:role0:type3:s0:c0
+/usr/local/test4 -s user0:role0:type4:s0:c0
+/usr/local/test5 -p user0:role0:type5:s0:c0
+/usr/local/test6 -l user0:role0:type6:s0:c0
+/var/run/test7 user0:role0:type7:s0:c0
+/opt/test_regex(/.*)? user0:role0:type8:s0:c0
+/tmp/no_match <<none>>
