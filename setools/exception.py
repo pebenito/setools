@@ -267,6 +267,12 @@ class InvalidDefaultRange(InvalidSymbol):
 #
 # Other exceptions
 #
+class InvalidContext(ValueError, PolicyrepException):
+
+    """Exception for invalid contexts."""
+    pass
+
+
 class NoCommon(AttributeError, PolicyrepException):
 
     """
@@ -278,6 +284,12 @@ class NoCommon(AttributeError, PolicyrepException):
 class NoDefaults(InvalidSymbol):
 
     """Exception for classes that have no default_* statements."""
+    pass
+
+
+class NoFileContextsMatch(ValueError):
+
+    """Exception when a path does not match any file context entries."""
     pass
 
 

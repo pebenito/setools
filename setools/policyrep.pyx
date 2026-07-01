@@ -24,13 +24,7 @@ from typing import TypeVar, Union
 cimport sepol
 cimport selinux
 
-from .exception import InvalidPolicy, MLSDisabled, InvalidBoolean, InvalidCategory, InvalidClass, \
-    InvalidCommon, InvalidInitialSid, InvalidLevel, InvalidLevelDecl, InvalidRange, InvalidRole, \
-    InvalidSensitivity, InvalidType, InvalidUser, InvalidRuleType, InvalidBoundsType, \
-    InvalidConstraintType, InvalidDefaultType, InvalidFSUseType, InvalidMLSRuleType, \
-    InvalidRBACRuleType, InvalidTERuleType, SymbolUseError, RuleUseError, ConstraintUseError, \
-    NoStatement, InvalidDefaultValue, InvalidDefaultRange, NoCommon, NoDefaults, \
-    RuleNotConditional, TERuleNoFilename, LowLevelPolicyError
+from .exception import *
 
 cdef extern from "<stdio.h>":
     int vasprintf(char **strp, const char *fmt, va_list ap)
@@ -77,6 +71,7 @@ include "bounds.pxi"
 include "constraint.pxi"
 include "context.pxi"
 include "default.pxi"
+include "filecontexts.pxi"
 include "fscontext.pxi"
 include "initsid.pxi"
 include "mls.pxi"

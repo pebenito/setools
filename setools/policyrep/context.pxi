@@ -29,6 +29,44 @@ cdef class Context(PolicyObject):
 
         return c
 
+    @staticmethod
+    cdef inline Context factory_from_string(SELinuxPolicy policy, str ctx):
+        """Factory function for creating Context objects from a string."""
+        cdef:
+            Context c = Context.__new__(Context)
+            list items = ctx.split(":", maxsplit=3)
+
+        try:
+            c.user = policy.lookup_user(items[0])
+            c.role = policy.lookup_role(items[1])
+            c.type_ = policy.lookup_type(items[2])
+
+            # object_r is a special case: it is implicitly associated with
+            # all users and types.
+            if c.role != "object_r":
+                if c.role not in c.user.roles:
+                    raise InvalidContext(
+                        f"{ctx} is invalid: Role {c.role} is not associated to user {c.user}.")
+                if c.type_ not in tuple(c.role.types()):
+                    raise InvalidContext(
+                        f"{ctx} is invalid: Type {c.type_} is not associated to role {c.role}.")
+
+            if policy.mls:
+                c._range = policy.lookup_range(items[3])
+                if not c._range <= c.user.mls_range:
+                    raise InvalidContext(
+                        f"{ctx} is invalid: Range {c._range} not in user {c.user}'s "
+                        f"allowed range {c.user.mls_range}")
+
+        except IndexError as ex:
+            raise InvalidContext("f{ctx} is invalid: Context is incomplete.") from ex
+
+        except InvalidSymbol as ex:
+            raise InvalidContext(f"{ctx} is invalid: {ex}") from ex
+
+        c.policy = policy
+        return c
+
     def __str__(self):
         if self._range:
             return f"{self.user}:{self.role}:{self.type_}:{self.range_}"
