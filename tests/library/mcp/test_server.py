@@ -22,6 +22,7 @@ PERM_MAP = "tests/library/perm_map"
 DTA_POLICY = "tests/library/dta.conf"
 DIFF_LEFT_POLICY = "tests/library/diff_left.conf"
 DIFF_RIGHT_POLICY = "tests/library/diff_right.conf"
+FILE_CONTEXTS = "tests/library/policyrep/file_contexts"
 
 
 @pytest.fixture(scope="class")
@@ -655,3 +656,38 @@ class TestDiffPolicies:
         pc = data["result"]["portcons"]
         for key in ("added", "removed"):
             assert key in pc
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+class TestLookupFileContext:
+    def test_lookup_default_filetype(self, mcp_server: SEToolsMCPServer) -> None:
+        data = assert_payload(mcp_server.setools_lookup_file_context(
+            path="/var/run/test7", fc_path=FILE_CONTEXTS))
+        assert data["count"] == 1
+        assert data["result"] == "user0:object_r:type7:s4:c5"
+
+    def test_lookup_file_filetype(self, mcp_server: SEToolsMCPServer) -> None:
+        data = assert_payload(mcp_server.setools_lookup_file_context(
+            path="/usr/bin/test0", filetype="file", fc_path=FILE_CONTEXTS))
+        assert data["result"] == "user0:object_r:type0:s4:c5"
+
+    def test_lookup_dir_filetype(self, mcp_server: SEToolsMCPServer) -> None:
+        data = assert_payload(mcp_server.setools_lookup_file_context(
+            path="/usr/lib/test1", filetype="dir", fc_path=FILE_CONTEXTS))
+        assert data["result"] == "user0:object_r:type1:s4:c5"
+
+    def test_lookup_regex_match(self, mcp_server: SEToolsMCPServer) -> None:
+        data = assert_payload(mcp_server.setools_lookup_file_context(
+            path="/opt/test_regex/subdir/file", fc_path=FILE_CONTEXTS))
+        assert data["result"] == "user0:object_r:type8:s4:c5"
+
+    def test_lookup_no_match_raises(self, mcp_server: SEToolsMCPServer) -> None:
+        from setools.exception import NoFileContextsMatch
+        with pytest.raises(NoFileContextsMatch):
+            mcp_server.setools_lookup_file_context(
+                path="/nonexistent/path/that/does/not/match", fc_path=FILE_CONTEXTS)
+
+    def test_lookup_nonexistent_fc_path_raises(self, mcp_server: SEToolsMCPServer) -> None:
+        with pytest.raises(OSError):
+            mcp_server.setools_lookup_file_context(
+                path="/some/path", fc_path="/nonexistent/file_contexts")

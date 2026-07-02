@@ -16,7 +16,8 @@ except ImportError as iex:
 
 from .. import (BoolQuery, BoundsQuery, BoundsRuletype, CategoryQuery, CommonQuery,
                 ConstraintQuery, ConstraintRuletype, DefaultQuery, DefaultRuletype,
-                DevicetreeconQuery, DomainTransitionAnalysis, FSUseQuery, FSUseRuletype,
+                DevicetreeconQuery, DomainTransitionAnalysis, FileContexts,
+                FileContextsFiletype, FSUseQuery, FSUseRuletype,
                 GenfsconQuery, IbendportconQuery, IbpkeyconQuery, IbpkeyconRange,
                 InfoFlowAnalysis, InitialSIDQuery, IomemconQuery, IomemconRange,
                 IoportconQuery, IoportconRange, MLSRuleQuery, MLSRuletype, NetifconQuery,
@@ -52,6 +53,13 @@ class PolicyCache(dict):
         return self[key]
 
 
+class FileContextsCache(dict):
+    """Simple cache for loaded file_contexts"""
+    def __missing__(self, key: str | None) -> FileContexts:
+        self[key] = FileContexts(None, key)
+        return self[key]
+
+
 class SEToolsMCPServer:
     """
     MCP server encapsulating all setools policy analysis tools.
@@ -64,6 +72,7 @@ class SEToolsMCPServer:
         self.log: logging.Logger = logging.getLogger(__name__)
         self.default_policy: str | None = default_policy
         self._policy_cache: PolicyCache = PolicyCache()
+        self._fc_cache: FileContextsCache = FileContextsCache()
 
         try:
             # Init the policy cache.  Load the default policy as the None key and its path.
@@ -79,7 +88,8 @@ class SEToolsMCPServer:
             instructions=(
                 "SELinux policy analysis tools built on the setools library.  "
                 "Supports querying TE/RBAC/MLS rules, enumerating policy components, "
-                "domain transition analysis, information flow analysis, and policy diffing."
+                "domain transition analysis, information flow analysis, policy diffing,"
+                "and file_context lookup."
             ),
         )
 
@@ -111,6 +121,13 @@ class SEToolsMCPServer:
         return SEToolsMCPServer._serialize_results(results[:max_results],
                                                    returned_count,
                                                    truncated)
+
+    def _load_file_contexts(self, fc_path: str | None = None) -> FileContexts:
+        """
+        Return a (cached) FileContexts for file_contexts at path *fc_path*.
+        If *fc_path* is None, uses the system default file_contexts.
+        """
+        return self._fc_cache[fc_path]
 
     def _load_policy(self, policy: str | None = None) -> SELinuxPolicy:
         """
@@ -1223,3 +1240,31 @@ class SEToolsMCPServer:
             }
 
         return self._serialize_results(differences, count, any_truncated)
+
+    def setools_lookup_file_context(
+        self,
+        path: Annotated[str, "The file path to look up in the file_contexts."],
+        filetype: Annotated[
+            str | None,
+            "File type to match. Valid values: any, file, dir, chr_file, blk_file, "
+            "sock_file, fifo_file, lnk_file. If omitted, defaults to 'any'.",
+        ] = None,
+        fc_path: Annotated[
+            str | None,
+            "Path to a file_contexts file. If omitted, uses the system default.",
+        ] = None,
+    ) -> str:
+        """
+        Look up the SELinux file context for a given path.
+
+        Returns the security context that would be assigned to the specified
+        path according to the file_contexts configuration.
+
+        Use this instead of a naive text search, as it properly evaluates the
+        file context rules, including regex precedence and file type specifiers.
+        """
+        ft = FileContextsFiletype[filetype] if filetype else FileContextsFiletype.any
+
+        fc = self._load_file_contexts(fc_path)
+        result = fc.lookup(path, ft)
+        return self._serialize_results(result, 1, False)
