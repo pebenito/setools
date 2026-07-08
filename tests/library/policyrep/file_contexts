@@ -1,0 +1,10 @@
+/usr/bin/test0 -- user0:object_r:type0:s4:c5
+/usr/lib/test1 -d user0:object_r:type1:s4:c5
+/usr/sbin/test2 -c user0:object_r:type2:s4:c5
+/usr/share/test3 -b user0:object_r:type3:s4:c5
+/usr/local/test4 -s user0:object_r:type4:s4:c5
+/usr/local/test5 -p user0:object_r:type5:s4:c5
+/usr/local/test6 -l user0:object_r:type6:s4:c5
+/var/run/test7 user0:object_r:type7:s4:c5
+/opt/test_regex(/.*)? user0:object_r:type8:s4:c5
+/tmp/no_match <<none>>

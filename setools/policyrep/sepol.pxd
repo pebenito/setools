@@ -24,15 +24,17 @@ cdef extern from "<sepol/debug.h>":
 
 
 cdef extern from "<sepol/policydb/services.h>":
-    cdef int SECURITY_FS_USE_XATTR
-    cdef int SECURITY_FS_USE_TRANS
-    cdef int SECURITY_FS_USE_TASK
-    cdef int SECURITY_FS_USE_GENFS
-    cdef int SECURITY_FS_USE_NONE
+    enum:
+        SECURITY_FS_USE_XATTR
+        SECURITY_FS_USE_TRANS
+        SECURITY_FS_USE_TASK
+        SECURITY_FS_USE_GENFS
+        SECURITY_FS_USE_NONE
 
 
 cdef extern from "<sepol/policydb/flask_types.h>":
-    cdef int SELINUX_MAGIC
+    enum:
+        SELINUX_MAGIC
 
     ctypedef char* sepol_security_context_t
     ctypedef uint32_t sepol_access_vector_t
@@ -54,8 +56,9 @@ cdef extern from "<sepol/policydb/ebitmap.h>":
     #
     # ebitmap_t
     #
-    cdef int MAPBIT
-    cdef int MAPSIZE
+    enum:
+        MAPBIT
+        MAPSIZE
 
     cdef struct ebitmap:
         ebitmap_node_t *node
@@ -127,22 +130,23 @@ cdef extern from "<sepol/policydb/avtab.h>":
     #
     # avtab_key_t
     #
-    cdef int AVTAB_ALLOWED
-    cdef int AVTAB_AUDITALLOW
-    cdef int AVTAB_AUDITDENY
-    cdef int AVTAB_NEVERALLOW
-    cdef int AVTAB_AV
-    cdef int AVTAB_TRANSITION
-    cdef int AVTAB_MEMBER
-    cdef int AVTAB_CHANGE
-    cdef int AVTAB_TYPE
-    cdef int AVTAB_XPERMS_ALLOWED
-    cdef int AVTAB_XPERMS_AUDITALLOW
-    cdef int AVTAB_XPERMS_DONTAUDIT
-    cdef int AVTAB_XPERMS_NEVERALLOW
-    cdef int AVTAB_XPERMS
-    cdef int AVTAB_ENABLED_OLD
-    cdef int AVTAB_ENABLED
+    enum:
+        AVTAB_ALLOWED
+        AVTAB_AUDITALLOW
+        AVTAB_AUDITDENY
+        AVTAB_NEVERALLOW
+        AVTAB_AV
+        AVTAB_TRANSITION
+        AVTAB_MEMBER
+        AVTAB_CHANGE
+        AVTAB_TYPE
+        AVTAB_XPERMS_ALLOWED
+        AVTAB_XPERMS_AUDITALLOW
+        AVTAB_XPERMS_DONTAUDIT
+        AVTAB_XPERMS_NEVERALLOW
+        AVTAB_XPERMS
+        AVTAB_ENABLED_OLD
+        AVTAB_ENABLED
 
     cdef struct avtab_key:
         uint16_t source_type
@@ -155,9 +159,10 @@ cdef extern from "<sepol/policydb/avtab.h>":
     #
     # avtab_extended_perms_t
     #
-    cdef int AVTAB_XPERMS_IOCTLFUNCTION
-    cdef int AVTAB_XPERMS_IOCTLDRIVER
-    cdef int AVTAB_XPERMS_NLMSG
+    enum:
+        AVTAB_XPERMS_IOCTLFUNCTION
+        AVTAB_XPERMS_IOCTLDRIVER
+        AVTAB_XPERMS_NLMSG
 
     cdef struct avtab_extended_perms:
         uint8_t specified
@@ -271,10 +276,11 @@ cdef extern from "<sepol/policydb/sidtab.h>":
     #
     # sidtab_t
     #
-    cdef int SIDTAB_HASH_BITS
-    cdef int SIDTAB_HASH_BUCKETS
-    cdef int SIDTAB_HASH_MASK
-    cdef int SIDTAB_SIZE
+    enum:
+        SIDTAB_HASH_BITS
+        SIDTAB_HASH_BUCKETS
+        SIDTAB_HASH_MASK
+        SIDTAB_SIZE
 
     ctypedef struct sidtab_t:
         sidtab_ptr_t *htable
@@ -292,8 +298,9 @@ cdef extern from "<sepol/policydb/conditional.h>":
     #endif
     """
 
-    cdef int COND_EXPR_MAXDEPTH
-    cdef int COND_MAX_BOOLS
+    enum:
+        COND_EXPR_MAXDEPTH
+        COND_MAX_BOOLS
 
     #
     # cond_av_list_t
@@ -307,14 +314,15 @@ cdef extern from "<sepol/policydb/conditional.h>":
     #
     # cond_expr_t
     #
-    cdef int COND_BOOL
-    cdef int COND_NOT
-    cdef int COND_OR
-    cdef int COND_AND
-    cdef int COND_XOR
-    cdef int COND_EQ
-    cdef int COND_NEQ
-    cdef int COND_LAST
+    enum:
+        COND_BOOL
+        COND_NOT
+        COND_OR
+        COND_AND
+        COND_XOR
+        COND_EQ
+        COND_NEQ
+        COND_LAST
 
     cdef struct cond_expr:
         uint32_t expr_type
@@ -326,7 +334,8 @@ cdef extern from "<sepol/policydb/conditional.h>":
     #
     # cond_node_t
     #
-    cdef int COND_NODE_FLAGS_TUNABLE
+    enum:
+        COND_NODE_FLAGS_TUNABLE
 
     cdef struct cond_node:
         int cur_state
@@ -346,31 +355,33 @@ cdef extern from "<sepol/policydb/conditional.h>":
 
 
 cdef extern from "<sepol/policydb/constraint.h>":
-    cdef int CEXPR_NOT
-    cdef int CEXPR_AND
-    cdef int CEXPR_OR
-    cdef int CEXPR_ATTR
-    cdef int CEXPR_NAMES
-    cdef int CEXPR_USER
-    cdef int CEXPR_ROLE
-    cdef int CEXPR_TYPE
-    cdef int CEXPR_TARGET
-    cdef int CEXPR_XTARGET
-    cdef int CEXPR_L1L2
-    cdef int CEXPR_L1H2
-    cdef int CEXPR_H1L2
-    cdef int CEXPR_H1H2
-    cdef int CEXPR_L1H1
-    cdef int CEXPR_L2H2
+    enum:
+        CEXPR_NOT
+        CEXPR_AND
+        CEXPR_OR
+        CEXPR_ATTR
+        CEXPR_NAMES
+        CEXPR_USER
+        CEXPR_ROLE
+        CEXPR_TYPE
+        CEXPR_TARGET
+        CEXPR_XTARGET
+        CEXPR_L1L2
+        CEXPR_L1H2
+        CEXPR_H1L2
+        CEXPR_H1H2
+        CEXPR_L1H1
+        CEXPR_L2H2
 
     #
     # constraint_expr_t
     #
-    cdef int CEXPR_EQ
-    cdef int CEXPR_NEQ
-    cdef int CEXPR_DOM
-    cdef int CEXPR_DOMBY
-    cdef int CEXPR_INCOMP
+    enum:
+        CEXPR_EQ
+        CEXPR_NEQ
+        CEXPR_DOM
+        CEXPR_DOMBY
+        CEXPR_INCOMP
 
     cdef struct constraint_expr:
         uint32_t expr_type
@@ -411,8 +422,9 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # role_set_t
     #
-    cdef int ROLE_STAR
-    cdef int ROLE_COMP
+    enum:
+        ROLE_STAR
+        ROLE_COMP
 
     cdef struct role_set:
         ebitmap_t roles
@@ -423,8 +435,9 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # type_set_t
     #
-    cdef int TYPE_STAR
-    cdef int TYPE_COMP
+    enum:
+        TYPE_STAR
+        TYPE_COMP
 
     cdef struct type_set:
         ebitmap_t types
@@ -436,10 +449,11 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # av_extended_perms_t
     #
-    cdef int AVRULE_XPERMS_IOCTLFUNCTION
-    cdef int AVRULE_XPERMS_IOCTLDRIVER
-    cdef int AVRULE_XPERMS_NLMSG
-    cdef int EXTENDED_PERMS_LEN
+    enum:
+        AVRULE_XPERMS_IOCTLFUNCTION
+        AVRULE_XPERMS_IOCTLDRIVER
+        AVRULE_XPERMS_NLMSG
+        EXTENDED_PERMS_LEN
 
     cdef struct av_extended_perms:
         uint8_t specified
@@ -453,22 +467,23 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # avrule_t
     #
-    cdef int AVRULE_ALLOWED
-    cdef int AVRULE_AUDITALLOW
-    cdef int AVRULE_AUDITDENY
-    cdef int AVRULE_DONTAUDIT
-    cdef int AVRULE_NEVERALLOW
-    cdef int AVRULE_AV
-    cdef int AVRULE_TRANSITION
-    cdef int AVRULE_MEMBER
-    cdef int AVRULE_CHANGE
-    cdef int AVRULE_TYPE
-    cdef int AVRULE_XPERMS_ALLOWED
-    cdef int AVRULE_XPERMS_AUDITALLOW
-    cdef int AVRULE_XPERMS_DONTAUDIT
-    cdef int AVRULE_XPERMS_NEVERALLOW
-    cdef int AVRULE_XPERMS
-    cdef int RULE_SELF
+    enum:
+        AVRULE_ALLOWED
+        AVRULE_AUDITALLOW
+        AVRULE_AUDITDENY
+        AVRULE_DONTAUDIT
+        AVRULE_NEVERALLOW
+        AVRULE_AV
+        AVRULE_TRANSITION
+        AVRULE_MEMBER
+        AVRULE_CHANGE
+        AVRULE_TYPE
+        AVRULE_XPERMS_ALLOWED
+        AVRULE_XPERMS_AUDITALLOW
+        AVRULE_XPERMS_DONTAUDIT
+        AVRULE_XPERMS_NEVERALLOW
+        AVRULE_XPERMS
+        RULE_SELF
 
     cdef struct avrule:
         uint32_t specified
@@ -505,15 +520,16 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # class_datum_t
     #
-    cdef int DEFAULT_SOURCE
-    cdef int DEFAULT_TARGET
-    cdef int DEFAULT_SOURCE_LOW
-    cdef int DEFAULT_SOURCE_HIGH
-    cdef int DEFAULT_SOURCE_LOW_HIGH
-    cdef int DEFAULT_TARGET_LOW
-    cdef int DEFAULT_TARGET_HIGH
-    cdef int DEFAULT_TARGET_LOW_HIGH
-    cdef int DEFAULT_GLBLUB
+    enum:
+        DEFAULT_SOURCE
+        DEFAULT_TARGET
+        DEFAULT_SOURCE_LOW
+        DEFAULT_SOURCE_HIGH
+        DEFAULT_SOURCE_LOW_HIGH
+        DEFAULT_TARGET_LOW
+        DEFAULT_TARGET_HIGH
+        DEFAULT_TARGET_LOW_HIGH
+        DEFAULT_GLBLUB
 
     cdef struct class_datum:
         symtab_datum_t s
@@ -532,7 +548,8 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # cond_bool_datum_t
     #
-    cdef int COND_BOOL_FLAGS_TUNABLE
+    enum:
+        COND_BOOL_FLAGS_TUNABLE
 
     cdef struct cond_bool_datum:  # Boolean data type
         symtab_datum_t s
@@ -636,24 +653,25 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # ocontext_t
     #
-    cdef int OCON_ISID
-    cdef int OCON_FS
-    cdef int OCON_PORT
-    cdef int OCON_NETIF
-    cdef int OCON_NODE
-    cdef int OCON_FSUSE
-    cdef int OCON_NODE6
-    cdef int OCON_IBPKEY
-    cdef int OCON_IBENDPORT
+    enum:
+        OCON_ISID
+        OCON_FS
+        OCON_PORT
+        OCON_NETIF
+        OCON_NODE
+        OCON_FSUSE
+        OCON_NODE6
+        OCON_IBPKEY
+        OCON_IBENDPORT
+        OCON_NUM
 
-    cdef int OCON_XEN_ISID
-    cdef int OCON_XEN_PIRQ
-    cdef int OCON_XEN_IOPORT
-    cdef int OCON_XEN_IOMEM
-    cdef int OCON_XEN_PCIDEVICE
-    cdef int OCON_XEN_DEVICETREE
-
-    cdef int OCON_NUM
+    enum:
+        OCON_XEN_ISID
+        OCON_XEN_PIRQ
+        OCON_XEN_IOPORT
+        OCON_XEN_IOMEM
+        OCON_XEN_PCIDEVICE
+        OCON_XEN_DEVICETREE
 
     cdef struct ocontext:
         ocontext_u_union u
@@ -705,8 +723,9 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # role_datum_t
     #
-    cdef int ROLE_ROLE
-    cdef int ROLE_ATTRIB
+    enum:
+        ROLE_ROLE
+        ROLE_ATTRIB
 
     cdef struct role_datum:
         symtab_datum_t s
@@ -746,13 +765,14 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # type_datum_t
     #
-    cdef int TYPE_TYPE
-    cdef int TYPE_ATTRIB
-    cdef int TYPE_ALIAS
-    cdef int TYPE_FLAGS_PERMISSIVE
-    cdef int TYPE_FLAGS_EXPAND_ATTR_TRUE
-    cdef int TYPE_FLAGS_EXPAND_ATTR_FALSE
-    cdef int TYPE_FLAGS_EXPAND_ATTR
+    enum:
+        TYPE_TYPE
+        TYPE_ATTRIB
+        TYPE_ALIAS
+        TYPE_FLAGS_PERMISSIVE
+        TYPE_FLAGS_EXPAND_ATTR_TRUE
+        TYPE_FLAGS_EXPAND_ATTR_FALSE
+        TYPE_FLAGS_EXPAND_ATTR
 
     cdef struct type_datum:
         symtab_datum_t s
@@ -782,18 +802,20 @@ cdef extern from "<sepol/policydb/policydb.h>":
     #
     # Policy DB
     #
-    cdef int POLICYDB_VERSION_MAX
-    cdef int POLICYDB_VERSION_MIN
+    enum:
+        POLICYDB_VERSION_MAX
+        POLICYDB_VERSION_MIN
 
-    cdef int SYM_COMMONS
-    cdef int SYM_CLASSES
-    cdef int SYM_ROLES
-    cdef int SYM_TYPES
-    cdef int SYM_USERS
-    cdef int SYM_BOOLS
-    cdef int SYM_LEVELS
-    cdef int SYM_CATS
-    cdef int SYM_NUM
+    enum:
+        SYM_COMMONS
+        SYM_CLASSES
+        SYM_ROLES
+        SYM_TYPES
+        SYM_USERS
+        SYM_BOOLS
+        SYM_LEVELS
+        SYM_CATS
+        SYM_NUM
 
     cdef struct policydb:
         uint32_t policy_type
@@ -846,11 +868,13 @@ cdef extern from "<sepol/policydb.h>":
 
     ctypedef sepol_policydb sepol_policydb_t
 
-    cdef int SEPOL_DENY_UNKNOWN
-    cdef int SEPOL_REJECT_UNKNOWN
-    cdef int SEPOL_ALLOW_UNKNOWN
-    cdef int SEPOL_TARGET_SELINUX
-    cdef int SEPOL_TARGET_XEN
+    enum:
+        SEPOL_DENY_UNKNOWN
+        SEPOL_REJECT_UNKNOWN
+        SEPOL_ALLOW_UNKNOWN
+        SEPOL_TARGET_SELINUX
+        SEPOL_TARGET_XEN
+
     cdef int sepol_policy_kern_vers_min()
     cdef int sepol_policy_kern_vers_max()
 

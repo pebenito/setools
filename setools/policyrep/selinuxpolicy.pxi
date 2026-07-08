@@ -367,6 +367,10 @@ cdef class SELinuxPolicy:
 
         raise InvalidCommon(f"{name} is not a valid common")
 
+    def lookup_context(self, ctx):
+        """Look up a context."""
+        return Context.factory_from_string(self, ctx)
+
     def lookup_level(self, level):
         """Look up a MLS level."""
         return Level.factory_from_string(self, level)

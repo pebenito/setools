@@ -368,6 +368,141 @@ class TestRange:
         level5 = compiled_policy.lookup_level("s2:c0.c11")
         assert not (level5 in rangeobj)
 
+    def test_dom(self, compiled_policy: setools.SELinuxPolicy) -> None:
+        """Range dominate (ge)."""
+        # equal
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert range1 >= range2
+
+        # dominates (wider low)
+        range1 = compiled_policy.lookup_range("s0-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert range1 >= range2
+
+        # dominates (wider high)
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c11")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert range1 >= range2
+
+        # dominated by
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        assert not (range1 >= range2)
+
+        # incomp
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s1:c5-s2:c0.c11")
+        assert not (range1 >= range2)
+
+    def test_domby(self, compiled_policy: setools.SELinuxPolicy) -> None:
+        """Range dominated-by (le)."""
+        # equal
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert range1 <= range2
+
+        # dominated by (narrower)
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        assert range1 <= range2
+
+        # dominates (wider)
+        range1 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert not (range1 <= range2)
+
+        # incomp
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s1:c5-s2:c0.c11")
+        assert not (range1 <= range2)
+
+    def test_proper_dom(self, compiled_policy: setools.SELinuxPolicy) -> None:
+        """Range proper dominate (gt)."""
+        # equal
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert not (range1 > range2)
+
+        # strictly dominates (wider low)
+        range1 = compiled_policy.lookup_range("s0-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert range1 > range2
+
+        # strictly dominates (wider high)
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c11")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert range1 > range2
+
+        # strictly dominates (wider both)
+        range1 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert range1 > range2
+
+        # dominated by
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        assert not (range1 > range2)
+
+        # incomp
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s1:c5-s2:c0.c11")
+        assert not (range1 > range2)
+
+    def test_proper_domby(self, compiled_policy: setools.SELinuxPolicy) -> None:
+        """Range proper dominated-by (lt)."""
+        # equal
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert not (range1 < range2)
+
+        # strictly dominated by (narrower low)
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0-s2:c0.c10")
+        assert range1 < range2
+
+        # strictly dominated by (narrower high)
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c11")
+        assert range1 < range2
+
+        # strictly dominated by (narrower both)
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        assert range1 < range2
+
+        # dominates
+        range1 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert not (range1 < range2)
+
+        # incomp
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s1:c5-s2:c0.c11")
+        assert not (range1 < range2)
+
+    def test_incomp(self, compiled_policy: setools.SELinuxPolicy) -> None:
+        """Range incomparable (xor)."""
+        # equal
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert not (range1 ^ range2)
+
+        # dominates
+        range1 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        range2 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        assert not (range1 ^ range2)
+
+        # dominated by
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s0-s2:c0.c11")
+        assert not (range1 ^ range2)
+
+        # incomp (overlapping but neither contains the other)
+        range1 = compiled_policy.lookup_range("s0:c1-s2:c0.c10")
+        range2 = compiled_policy.lookup_range("s1:c5-s2:c0.c11")
+        assert range1 ^ range2
+
     def test_range_statement(self, compiled_policy: setools.SELinuxPolicy) -> None:
         """Range has no statement."""
         rangeobj = compiled_policy.lookup_range("s0")

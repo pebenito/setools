@@ -439,6 +439,9 @@ cdef class Range(PolicyObject):
     def __hash__(self):
         return hash(str(self))
 
+    def __contains__(self, other):
+        return self.low <= other <= self.high
+
     def __eq__(self, other):
         try:
             return self.low == other.low and self.high == other.high
@@ -450,8 +453,32 @@ cdef class Range(PolicyObject):
             self_str = str(self).replace(" ", "")
             return self_str == other_str
 
-    def __contains__(self, other):
-        return self.low <= other <= self.high
+    def __ge__(self, other):
+        return self.low <= other.low and self.high >= other.high
+
+    def __gt__(self, other):
+        return (self.low <= other.low and self.high > other.high) \
+            or (self.low < other.low and self.high >= other.high)
+
+    def __le__(self, other):
+        return other.low <= self.low <= other.high \
+            and other.low <= self.high <= other.high
+
+    def __lt__(self, other):
+        return (other.low <= self.low and other.high > self.high) \
+            or (other.low < self.low and other.high >= self.high)
+
+    def __xor__(self, other):
+        # Incomp operator
+        return not (self >= other or self <= other)
+
+    def dom(self, other):
+        """Returns if self dominates other."""
+        return self >= other
+
+    def domby(self, other):
+        """Returns if self is dominated by other."""
+        return self <= other
 
     def statement(self):
         raise NoStatement

@@ -10,7 +10,6 @@ from libc.stdint cimport uint8_t, uint16_t, uint32_t, uint64_t, uintptr_t
 from libc.stdio cimport FILE, fopen, fclose, snprintf
 from libc.stdlib cimport calloc, free
 from libc.string cimport memcpy, memset, strerror
-from posix.stat cimport S_IFBLK, S_IFCHR, S_IFDIR, S_IFIFO, S_IFREG, S_IFLNK, S_IFSOCK
 
 import dataclasses
 import logging
@@ -25,13 +24,7 @@ from typing import TypeVar, Union
 cimport sepol
 cimport selinux
 
-from .exception import InvalidPolicy, MLSDisabled, InvalidBoolean, InvalidCategory, InvalidClass, \
-    InvalidCommon, InvalidInitialSid, InvalidLevel, InvalidLevelDecl, InvalidRange, InvalidRole, \
-    InvalidSensitivity, InvalidType, InvalidUser, InvalidRuleType, InvalidBoundsType, \
-    InvalidConstraintType, InvalidDefaultType, InvalidFSUseType, InvalidMLSRuleType, \
-    InvalidRBACRuleType, InvalidTERuleType, SymbolUseError, RuleUseError, ConstraintUseError, \
-    NoStatement, InvalidDefaultValue, InvalidDefaultRange, NoCommon, NoDefaults, \
-    RuleNotConditional, TERuleNoFilename, LowLevelPolicyError
+from .exception import *
 
 cdef extern from "<stdio.h>":
     int vasprintf(char **strp, const char *fmt, va_list ap)
@@ -44,15 +37,27 @@ cdef extern from "<stdarg.h>":
 
 cdef extern from "<sys/socket.h>":
     ctypedef unsigned int socklen_t
-    cdef int AF_INET
-    cdef int AF_INET6
+    enum:
+        AF_INET
+        AF_INET6
 
 cdef extern from "<netinet/in.h>":
-    cdef int INET6_ADDRSTRLEN
-    cdef int IPPROTO_DCCP
-    cdef int IPPROTO_SCTP
-    cdef int IPPROTO_TCP
-    cdef int IPPROTO_UDP
+    enum:
+        INET6_ADDRSTRLEN
+        IPPROTO_DCCP
+        IPPROTO_SCTP
+        IPPROTO_TCP
+        IPPROTO_UDP
+
+cdef extern from "<sys/stat.h>":
+    enum:
+        S_IFBLK
+        S_IFCHR
+        S_IFDIR
+        S_IFIFO
+        S_IFREG
+        S_IFLNK
+        S_IFSOCK
 
 cdef extern from "<arpa/inet.h>":
     cdef const char *inet_ntop(int af, const void *src, char *dst, socklen_t size)
@@ -66,6 +71,7 @@ include "bounds.pxi"
 include "constraint.pxi"
 include "context.pxi"
 include "default.pxi"
+include "filecontexts.pxi"
 include "fscontext.pxi"
 include "initsid.pxi"
 include "mls.pxi"
