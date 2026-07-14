@@ -31,6 +31,7 @@ from .encoder import MCPEncoder
 __all__ = ("MCPEncoder",)
 
 TOOL_PREFIX: Final[str] = "setools_tool_"
+PROMPT_PREFIX: Final[str] = "setools_prompt_"
 
 
 class DiffComponent(str, enum.Enum):
@@ -97,6 +98,9 @@ class SEToolsMCPServer:
             if name.startswith(TOOL_PREFIX) and callable(getattr(self, name)):
                 self.log.info(f"Registering tool: {name}")
                 self.mcp.tool()(getattr(self, name))
+            elif name.startswith(PROMPT_PREFIX) and callable(getattr(self, name)):
+                self.log.info(f"Registering prompt: {name}")
+                self.mcp.prompt()(getattr(self, name))
 
     def run(self, transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
             host: str = "127.0.0.1", port: int = 8000) -> None:
@@ -145,6 +149,44 @@ class SEToolsMCPServer:
                            "result": result},
                           cls=MCPEncoder,
                           indent=2)
+
+    #
+    # Prompts
+    #
+    def setools_prompt_summarize(
+        self,
+        name: Annotated[str, "Domain (type) or program to summarize access for."],
+    ) -> str:
+        """Summarize the access of a domain (type) or program."""
+        return \
+            f"Summarize the access of {name}.  If this cannot be resolved to a type" \
+            "attempt to look up the executable type in file_contexts and if this is an" \
+            "entrypoint type, summarize the access of the related domain."
+
+    def setools_prompt_cve(
+        self,
+        cve: Annotated[str, "CVE identifier, e.g., CVE-2026-31431"],
+    ) -> str:
+        """Find domains might be vulnerable to a CVE."""
+        return \
+            "Based on the attached SELinux policy, what programs may be able to exploit " \
+            f"{cve}. Do not speculate."
+
+    def setools_prompt_dta_out(
+        self,
+        name: Annotated[str, "Domain (type) to summarize transitions for."],
+    ) -> str:
+        """List the transitions out of a domain (type)."""
+        return \
+            f"List the direct transitions out of {name}."
+
+    def setools_prompt_dta_in(
+        self,
+        name: Annotated[str, "Domain (type) to summarize transitions for."],
+    ) -> str:
+        """List the transitions into a domain (type)."""
+        return \
+            f"List the direct transitions into {name}."
 
     #
     # MCP Tools
