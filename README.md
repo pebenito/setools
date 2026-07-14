@@ -30,7 +30,7 @@ To run SETools graphical tools, the following packages are also required:
 
 To run SETools AI tools, the following packages are also required:
 
-* mcp
+* FastMCP 2.0+
 
 To build SETools, the following development packages are required, in
 addition to the development packages from the above list:

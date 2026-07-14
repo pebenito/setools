@@ -10,7 +10,7 @@ import logging
 from typing import Annotated, Any, Final, Literal
 
 try:
-    from mcp.server.fastmcp import FastMCP
+    from fastmcp import FastMCP
 except ImportError as iex:
     logging.getLogger(__name__).debug(f"{iex.name} failed to import.")
 
@@ -102,13 +102,15 @@ class SEToolsMCPServer:
                 self.log.info(f"Registering prompt: {name}")
                 self.mcp.prompt()(getattr(self, name))
 
-    def run(self, transport: Literal["stdio", "sse", "streamable-http"] = "stdio",
+    def run(self, transport: Literal["stdio", "http"] = "stdio",
             host: str = "127.0.0.1", port: int = 8000) -> None:
         """Start the MCP server with the given transport."""
-        if transport == "sse":
-            self.mcp.settings.host = host
-            self.mcp.settings.port = port
-        self.mcp.run(transport=transport)
+        if transport == "http":
+            self.log.info(f"Running MCP server over HTTP at {host}:{port}")
+            self.mcp.run(transport=transport, host=host, port=port)
+        else:
+            self.log.info("Running MCP server over stdio")
+            self.mcp.run(transport=transport)
 
     #
     # Helpers
