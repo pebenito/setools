@@ -10,12 +10,12 @@ import warnings
 parser = argparse.ArgumentParser(
     description="SETools MCP server — exposes setools policy analysis as MCP tools.")
 parser.add_argument("--policy", metavar="PATH", help="Default SELinux policy file to analyze.")
-parser.add_argument("--transport", choices=["stdio", "sse"], default="stdio",
-                    help="MCP transport to use (default: stdio).")
+parser.add_argument("--transport", choices=["stdio", "http"], default="stdio",
+                    help="MCP transport to use (stdio, http, default: stdio).")
 parser.add_argument("--host", default="127.0.0.1",
-                    help="Bind host for SSE transport (default: 127.0.0.1).")
+                    help="Bind host for HTTP transport (default: 127.0.0.1).")
 parser.add_argument("--port", type=int, default=8000,
-                    help="Bind port for SSE transport (default: 8000).")
+                    help="Bind port for HTTP transport (default: 8000).")
 parser.add_argument("-v", "--verbose", action="store_true",
                     help="Print extra informational messages")
 parser.add_argument("--debug", action="store_true", dest="debug", help="Enable debugging.")

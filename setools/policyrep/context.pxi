@@ -58,14 +58,14 @@ cdef class Context(PolicyObject):
                         f"{ctx} is invalid: Range {c._range} not in user {c.user}'s "
                         f"allowed range {c.user.mls_range}")
 
+            c.policy = policy
+            return c
+
         except IndexError as ex:
             raise InvalidContext("f{ctx} is invalid: Context is incomplete.") from ex
 
         except InvalidSymbol as ex:
             raise InvalidContext(f"{ctx} is invalid: {ex}") from ex
-
-        c.policy = policy
-        return c
 
     def __str__(self):
         if self._range:

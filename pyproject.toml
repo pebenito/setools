@@ -45,7 +45,7 @@ dependencies = []
 optional-dependencies.analysis = ["networkx>=2.6",
                                   "pygraphviz"]
 optional-dependencies.gui = ["PyQt6"]
-optional-dependencies.mcp = ["mcp>=1.0"]
+optional-dependencies.mcp = ["fastmcp>=2.0"]
 optional-dependencies.test = ["tox"]
 
 [tool.setuptools]
