@@ -55,6 +55,18 @@ def assert_payload(payload: str) -> dict:
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
+class TestAuthProvider:
+    def test_no_auth_by_default(self, compiled_policy) -> None:
+        assert SEToolsMCPServer(compiled_policy.path).mcp.auth is None
+
+    def test_auth_provider_is_used(self, compiled_policy) -> None:
+        jwt = pytest.importorskip("fastmcp.server.auth.providers.jwt")
+        auth = jwt.JWTVerifier(jwks_uri="https://auth.example.com/jwks")
+
+        assert SEToolsMCPServer(compiled_policy.path, auth=auth).mcp.auth is auth
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
 class TestSessionCache:
     def test_max_session_caches_must_be_positive(self, compiled_policy) -> None:
         with pytest.raises(ValueError):

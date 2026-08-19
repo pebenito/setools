@@ -9,6 +9,7 @@ from typing import Annotated, Any, Final, Literal
 
 try:
     from fastmcp import FastMCP
+    from fastmcp.server.auth import AuthProvider
     from fastmcp.server.dependencies import get_context
 except ImportError as iex:
     logging.getLogger(__name__).debug(f"{iex.name} failed to import.")
@@ -58,6 +59,7 @@ class SEToolsMCPServer:
     """
 
     def __init__(self, default_policy: str | None = None,
+                 auth: AuthProvider | None = None,
                  max_session_caches: int = DEFAULT_MAX_SESSION_CACHES) -> None:
         self.log: logging.Logger = logging.getLogger(__name__)
         self.default_policy: str | None = default_policy
@@ -81,6 +83,7 @@ class SEToolsMCPServer:
                 "domain transition analysis, information flow analysis, policy diffing,"
                 "and file_context lookup."
             ),
+            auth=auth,
         )
 
         for name in dir(self):
