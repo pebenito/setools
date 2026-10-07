@@ -5,10 +5,11 @@ import ipaddress
 import itertools
 import json
 import logging
-from typing import Annotated, Any, Final, Literal
+from typing import Annotated, Any, Final, Iterable, Literal
 
 try:
     from fastmcp import FastMCP
+    from fastmcp.server.auth import AuthProvider
 except ImportError as iex:
     logging.getLogger(__name__).debug(f"{iex.name} failed to import.")
 
@@ -25,11 +26,17 @@ from .. import (BoolQuery, BoundsQuery, BoundsRuletype, CategoryQuery, CommonQue
                 RoleTypesQuery, SELinuxPolicy, SensitivityQuery, TERuleQuery, TERuletype,
                 TypeAttributeQuery, TypeQuery, UserQuery)
 from .encoder import MCPEncoder
+from .extension import AuditSink, NullAuditSink, ReadinessCheck
+from .policy import PolicyProvider, SessionOwnerProvider
 
 __all__ = ("MCPEncoder",)
 
 TOOL_PREFIX: Final[str] = "setools_tool_"
 PROMPT_PREFIX: Final[str] = "setools_prompt_"
+DEFAULT_INSTRUCTIONS: Final[str] = ("SELinux policy analysis tools built on the setools library.  "
+                                    "Supports querying TE/RBAC/MLS rules, enumerating policy "
+                                    "components, domain transition analysis, information flow "
+                                    "analysis, policy diffing,and file_context lookup.")
 
 
 class DiffComponent(enum.StrEnum):
@@ -67,9 +74,20 @@ class SEToolsMCPServer:
     is held as instance attributes; there are no module-level globals.
     """
 
-    def __init__(self, default_policy: str | None = None) -> None:
+    def __init__(self, default_policy: str | None = None,
+                 auth: AuthProvider | None = None, *,
+                 policy_provider: PolicyProvider | None = None,
+                 session_owner_provider: SessionOwnerProvider | None = None,
+                 readiness_checks: Iterable[ReadinessCheck] = (),
+                 audit_sink: AuditSink | None = None,
+                 name: str = "setools",
+                 instructions: str = DEFAULT_INSTRUCTIONS) -> None:
         self.log: logging.Logger = logging.getLogger(__name__)
         self.default_policy: str | None = default_policy
+        self.policy_provider: PolicyProvider | None = policy_provider
+        self.session_owner_provider: SessionOwnerProvider | None = session_owner_provider
+        self.readiness_checks: tuple[ReadinessCheck, ...] = tuple(readiness_checks)
+        self.audit_sink: AuditSink = audit_sink if audit_sink is not None else NullAuditSink()
         self._policy_cache: PolicyCache = PolicyCache()
         self._fc_cache: FileContextsCache = FileContextsCache()
 
@@ -82,15 +100,7 @@ class SEToolsMCPServer:
         except (OSError, RuntimeError) as err:
             self.log.error(f"Failed to load default policy: {err}")
 
-        self.mcp: FastMCP = FastMCP(
-            "setools",
-            instructions=(
-                "SELinux policy analysis tools built on the setools library.  "
-                "Supports querying TE/RBAC/MLS rules, enumerating policy components, "
-                "domain transition analysis, information flow analysis, policy diffing,"
-                "and file_context lookup."
-            ),
-        )
+        self.mcp: FastMCP = FastMCP(name, instructions=instructions, auth=auth)
 
         for name in dir(self):
             if name.startswith(TOOL_PREFIX) and callable(getattr(self, name)):

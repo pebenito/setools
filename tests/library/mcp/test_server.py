@@ -13,6 +13,8 @@ import enum
 
 import pytest
 
+from setools.mcp.extension import AuditEvent, NullAuditSink, ReadinessResult
+from setools.mcp.policy import PolicyArtifact, SessionOwner
 from setools.mcp.server import DiffComponent, SEToolsMCPServer
 
 # Use existing test policies; no need to create new ones just for MCP server tests
@@ -34,6 +36,61 @@ def test_diff_component_values() -> None:
                                                                 "types",
                                                                 "roles",
                                                                 "users", "portcons", "mls_rules"}
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_server_extension_defaults(compiled_policy) -> None:
+    """Existing construction uses reusable no-op extension defaults."""
+    server = SEToolsMCPServer(compiled_policy.path)
+
+    assert server.policy_provider is None
+    assert server.session_owner_provider is None
+    assert not server.readiness_checks
+    assert isinstance(server.audit_sink, NullAuditSink)
+    assert server.mcp.auth is None
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_server_accepts_extension_dependencies(compiled_policy) -> None:
+    """Hosted subclasses can inject reusable server dependencies."""
+    class PolicyProvider:
+        """Policy provider test double."""
+
+        def acquire(self, reference: str, owner: SessionOwner) -> PolicyArtifact:
+            raise AssertionError((reference, owner))
+
+    class OwnerProvider:
+        """Session-owner provider test double."""
+
+        def current_owner(self) -> SessionOwner:
+            return SessionOwner("test")
+
+    class AuditSink:
+        """Audit sink test double."""
+
+        def emit(self, event: AuditEvent) -> None:
+            raise AssertionError(event)
+
+    policy_provider = PolicyProvider()
+    owner_provider = OwnerProvider()
+    audit_sink = AuditSink()
+
+    def ready() -> ReadinessResult:
+        return ReadinessResult("test", True)
+
+    server = SEToolsMCPServer(compiled_policy.path,
+                              policy_provider=policy_provider,
+                              session_owner_provider=owner_provider,
+                              readiness_checks=(ready,),
+                              audit_sink=audit_sink,
+                              name="custom-setools",
+                              instructions="Custom instructions.")
+
+    assert server.policy_provider is policy_provider
+    assert server.session_owner_provider is owner_provider
+    assert server.readiness_checks == (ready,)
+    assert server.audit_sink is audit_sink
+    assert server.mcp.name == "custom-setools"
 
 
 @pytest.fixture(scope="class")
