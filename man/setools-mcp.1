@@ -1,0 +1,97 @@
+.\" SPDX-License-Identifier: GPL-2.0-only
+.TH setools-mcp 1 "2026-10-07" "SETools" "SETools Manual"
+.SH NAME
+setools-mcp \- run the SETools Model Context Protocol server
+.SH SYNOPSIS
+.B setools-mcp
+.RB [ \-\-policy
+.IR PATH ]
+.RB [ \-\-transport
+.BR stdio | http ]
+.RB [ \-\-host
+.IR ADDRESS ]
+.RB [ \-\-port
+.IR PORT ]
+.RB [ \-\-config
+.IR PATH ]
+.RB [ \-v | \-\-verbose ]
+.RB [ \-\-debug ]
+.SH DESCRIPTION
+.B setools-mcp
+exposes SETools SELinux policy-analysis tools through Model Context Protocol.
+The default stdio transport is suitable for a client-managed local process.
+The HTTP transport provides a persistent Streamable HTTP server.
+.PP
+Supplying
+.B \-\-config
+defaults to HTTP transport and configures startup settings, operational routes,
+session cache, and policy provider. An explicit transport setting may select stdio.
+Explicit command-line policy, transport, host, and port arguments override file values.
+.SH OPTIONS
+.TP
+.BI \-\-policy " PATH"
+Use PATH as the default local SELinux policy, overriding the configured default policy.
+.TP
+.BI \-\-transport " TRANSPORT"
+Use
+.B stdio
+or
+.B http
+transport, overriding the configured transport.
+The default is stdio without a configuration file and HTTP with one.
+.TP
+.BI \-\-host " ADDRESS"
+Bind the HTTP server to ADDRESS, overriding the configured host.
+.TP
+.BI \-\-port " PORT"
+Bind the HTTP server to PORT, overriding the configured port.
+.TP
+.BI \-\-config " PATH"
+Load reusable server and policy-provider settings from PATH.
+Omitted command-line options preserve file values.
+The file must be valid even when a value would be overridden.
+.TP
+.BR \-v ", " \-\-verbose
+Enable informational logging.
+.TP
+.B \-\-debug
+Enable debug logging and Python warnings.
+.SH CONFIGURATION
+See
+.I docs/MCP-CONFIG.md
+and
+.I docs/mcp-http.ini
+for the configuration format and an Azure DevOps Universal Package example.
+.PP
+The
+.B [server]
+section supports
+.BR transport ,
+.BR default_policy ,
+.BR name ,
+and
+.B instructions
+alongside binding, route, request-protection, authentication, local-path, cache, and
+resource-limit settings.
+Instructions may use indented INI continuation lines.
+.SH SECURITY
+Local paths are allowed by default only for stdio transport.
+Hosted deployments should keep local paths disabled, configure exact Host and Origin allowlists
+with
+.BR "host_origin_protection = true" ,
+and run behind an appropriate HTTPS network edge.
+Authentication is supplied through a FastMCP authentication provider.
+The provider is responsible for token validation, authorization challenges, and protected
+resource metadata.
+An HTTP server with local paths disabled refuses to start without an authentication provider
+unless
+.B allow_unauthenticated
+is set; set it only when an authenticating reverse proxy restricts access.
+.PP
+Readiness responses report only check names and states; details are logged.
+When local paths are disabled, tool error details are masked, policy metadata omits local
+filesystem paths, and query result and analysis depth limits are enforced.
+.SH SEE ALSO
+.BR seinfo (1),
+.BR sesearch (1),
+.BR sediff (1)

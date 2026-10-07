@@ -177,6 +177,11 @@ Tool Name   | Use
 ----------- | -------------------------------------------
 setools-mcp | A model context protocol server providing analysis tools to LLMs.
 
+`setools-mcp` supports local stdio operation and hosted Streamable HTTP operation. Hosted
+deployments can acquire immutable SELinux policy versions from Azure DevOps Universal Packages
+and return session-owned opaque references for use by the analysis tools. See
+[`docs/MCP-CONFIG.md`](docs/MCP-CONFIG.md) for configuration and security details.
+
 ### Analysis Libraries
 
 The SETools libraries are available for use in third-party
