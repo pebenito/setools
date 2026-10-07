@@ -563,6 +563,58 @@ def test_server_does_not_ignore_unknown_provider() -> None:
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
+def test_operational_routes_report_health_and_readiness(compiled_policy) -> None:
+    """Operational routes report liveness and injected readiness failures."""
+    def not_ready() -> ReadinessResult:
+        return ReadinessResult("provider", False, "unavailable")
+
+    config = MCPConfig(default_policy=compiled_policy.path,
+                       health_path="/operational/live", readiness_path="/operational/ready")
+    server = SEToolsMCPServer(config, readiness_checks=(not_ready,))
+
+    with TestClient(server.mcp.http_app()) as client:
+        health = client.get("/operational/live")
+        readiness = client.get("/operational/ready")
+        assert client.get("/health").status_code == 404
+        assert client.get("/ready").status_code == 404
+
+    assert health.status_code == 200
+    assert health.json()["status"] == "healthy"
+    assert readiness.status_code == 503
+    assert readiness.json()["checks"] == [{"name": "provider", "ready": False}]
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_policy_acquisition_emits_non_sensitive_audit_events(compiled_policy) -> None:
+    """Policy acquisition emits lifecycle events without local paths."""
+    class Provider:
+        """Policy provider returning the test policy."""
+
+        def acquire(self, reference: str, owner: SessionOwner) -> PolicyArtifact:
+            return PolicyArtifact(reference, compiled_policy.path)
+
+    class Sink:
+        """Collect audit events."""
+
+        def __init__(self) -> None:
+            self.events: list[AuditEvent] = []
+
+        def emit(self, event: AuditEvent) -> None:
+            self.events.append(event)
+
+    sink = Sink()
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path),
+                              policy_provider=Provider(), audit_sink=sink)
+    loaded = assert_payload(server.setools_tool_load_policy_versions(["1.2.3"]))["result"][0]
+    server.setools_tool_get_policy_info(loaded["reference"])
+
+    assert [event.event_type for event in sink.events] == [AuditEventType.policy_acquire_started,
+                                                           AuditEventType.policy_acquire_completed,
+                                                           AuditEventType.policy_reference_used]
+    assert all(str(compiled_policy.path) not in str(event) for event in sink.events)
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
 def test_server_accepts_extension_dependencies(compiled_policy) -> None:
     """Hosted subclasses can inject reusable server dependencies."""
     class PolicyProvider:
