@@ -2,6 +2,7 @@
 
 import contextlib
 import enum
+import inspect
 import ipaddress
 import itertools
 import json
@@ -10,8 +11,11 @@ import threading
 from typing import Annotated, Any, AsyncIterator, Final, Iterable, Literal
 
 try:
+    import anyio.to_thread
     from fastmcp import FastMCP
     from fastmcp.server.auth import AuthProvider
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
 except ImportError as iex:
     logging.getLogger(__name__).debug(f"{iex.name} failed to import.")
 
@@ -28,7 +32,8 @@ from .. import (BoolQuery, BoundsQuery, BoundsRuletype, CategoryQuery, CommonQue
                 RoleTypesQuery, SELinuxPolicy, SensitivityQuery, TERuleQuery, TERuletype,
                 TypeAttributeQuery, TypeQuery, UserQuery)
 from .encoder import MCPEncoder
-from .extension import AuditEvent, AuditEventType, AuditSink, NullAuditSink, ReadinessCheck
+from .extension import (AuditEvent, AuditEventType, AuditSink, NullAuditSink, ReadinessCheck,
+                        ReadinessResult)
 from .policy import PolicyArtifact, PolicyProvider, SessionOwnerProvider
 from .providers import LocalPolicyProvider
 from .session import (DEFAULT_MAX_SESSION_ARTIFACTS, FastMCPSessionOwnerProvider, SessionCache,
@@ -42,6 +47,9 @@ DEFAULT_MAX_SESSION_CACHES: Final[int] = 64
 DEFAULT_MAX_QUERY_RESULTS: Final[int] = 1000
 DEFAULT_MAX_ANALYSIS_DEPTH: Final[int] = 10
 DEFAULT_MAX_POLICY_VERSIONS: Final[int] = 4
+DEFAULT_MCP_PATH: Final[str] = "/mcp"
+DEFAULT_HEALTH_PATH: Final[str] = "/health"
+DEFAULT_READINESS_PATH: Final[str] = "/ready"
 DEFAULT_INSTRUCTIONS: Final[str] = ("SELinux policy analysis tools built on the setools library.  "
                                     "Supports querying TE/RBAC/MLS rules, enumerating policy "
                                     "components, domain transition analysis, information flow "
@@ -82,7 +90,12 @@ class SEToolsMCPServer:
                  readiness_checks: Iterable[ReadinessCheck] = (),
                  audit_sink: AuditSink | None = None,
                  name: str = "setools",
-                 instructions: str = DEFAULT_INSTRUCTIONS) -> None:
+                 instructions: str = DEFAULT_INSTRUCTIONS,
+                 mcp_path: str = DEFAULT_MCP_PATH,
+                 health_path: str = DEFAULT_HEALTH_PATH,
+                 readiness_path: str = DEFAULT_READINESS_PATH,
+                 allowed_hosts: Iterable[str] = (),
+                 allowed_origins: Iterable[str] = ()) -> None:
         self.log: logging.Logger = logging.getLogger(__name__)
         self.default_policy: str | None = default_policy
         self.policy_provider: PolicyProvider = (
@@ -108,6 +121,13 @@ class SEToolsMCPServer:
                                                          on_evict=self._emit_session_evicted)
         self._default_policy: SELinuxPolicy | None = None
         self._default_policy_lock: threading.Lock = threading.Lock()
+        self.mcp_path = self._validate_http_path(mcp_path, "mcp_path")
+        self.health_path = self._validate_http_path(health_path, "health_path")
+        self.readiness_path = self._validate_http_path(readiness_path, "readiness_path")
+        if len({self.mcp_path, self.health_path, self.readiness_path}) != 3:
+            raise ValueError("MCP, health, and readiness paths must be distinct.")
+        self.allowed_hosts = tuple(allowed_hosts)
+        self.allowed_origins = tuple(allowed_origins)
 
         if self.default_policy is not None or self.allow_local_paths:
             try:
@@ -127,13 +147,21 @@ class SEToolsMCPServer:
             elif name.startswith(PROMPT_PREFIX) and callable(getattr(self, name)):
                 self.log.info(f"Registering prompt: {name}")
                 self.mcp.prompt()(getattr(self, name))
+        self._register_operational_routes()
 
     def run(self, transport: Literal["stdio", "http"] = "stdio",
             host: str = "127.0.0.1", port: int = 8000) -> None:
         """Start the MCP server with the given transport."""
         if transport == "http":
             self.log.info(f"Running MCP server over HTTP at {host}:{port}")
-            self.mcp.run(transport=transport, host=host, port=port)
+            self.mcp.run(transport=transport,
+                         host=host,
+                         port=port,
+                         path=self.mcp_path,
+                         host_origin_protection=(True if self.allowed_hosts or self.allowed_origins
+                                                 else "auto"),
+                         allowed_hosts=list(self.allowed_hosts) or None,
+                         allowed_origins=list(self.allowed_origins) or None)
         else:
             self.log.info("Running MCP server over stdio")
             self.mcp.run(transport=transport)
@@ -152,6 +180,50 @@ class SEToolsMCPServer:
             yield {}
         finally:
             self.close()
+
+    @staticmethod
+    def _validate_http_path(path: str, name: str) -> str:
+        """Validate one absolute HTTP route path."""
+        if not path.startswith("/") or path.startswith("//"):
+            raise ValueError(f"{name} must be an absolute HTTP path")
+        return path
+
+    def _register_operational_routes(self) -> None:
+        """Register unauthenticated liveness and readiness routes."""
+        async def health(_request: Request) -> JSONResponse:
+            return JSONResponse({"status": "healthy", "service": "setools"})
+
+        async def readiness(_request: Request) -> JSONResponse:
+            results = [await self._run_readiness_check(check)
+                       for check in self.readiness_checks]
+            ready = all(result.ready for result in results)
+            # Check details may describe internal infrastructure, so they are only logged.
+            return JSONResponse({"status": "ready" if ready else "not_ready",
+                                 "checks": [{"name": result.name, "ready": result.ready}
+                                            for result in results]},
+                                status_code=200 if ready else 503)
+
+        self.mcp.custom_route(self.health_path, methods=["GET"])(health)
+        self.mcp.custom_route(self.readiness_path, methods=["GET"])(readiness)
+
+    async def _run_readiness_check(self, check: ReadinessCheck) -> ReadinessResult:
+        """Run one readiness check without blocking the event loop."""
+        name = getattr(check, "__name__", type(check).__name__)
+        try:
+            # Synchronous checks run in a worker thread; asynchronous checks return an
+            # awaitable from the thread that is then awaited on the event loop.
+            result = await anyio.to_thread.run_sync(check)
+            if inspect.isawaitable(result):
+                result = await result
+        except Exception:  # pylint: disable=broad-except
+            self.log.exception(f"Readiness check {name} failed")
+            return ReadinessResult(name, False)
+
+        if not result.ready:
+            self.log.warning(f"Readiness check {result.name} is not ready: {result.detail}")
+        elif result.detail:
+            self.log.debug(f"Readiness check {result.name}: {result.detail}")
+        return result
 
     def _bound_max_results(self, max_results: int, *, name: str = "max_results") -> int:
         """Validate *max_results* and enforce the hosted ceiling."""

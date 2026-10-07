@@ -10,6 +10,7 @@
 
 import enum
 import json
+import threading
 from unittest.mock import Mock
 
 import anyio
@@ -397,6 +398,92 @@ def test_load_policy_versions_audit_omits_requested_reference(compiled_policy) -
     assert "untrusted" not in repr(events)
     assert "secret" not in repr(events)
     assert events[1].details == {"error": "OSError"}
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_http_run_uses_configured_security(compiled_policy) -> None:
+    """HTTP startup forwards configured paths and request protection."""
+    server = SEToolsMCPServer(compiled_policy.path,
+                              mcp_path="/api/mcp",
+                              health_path="/live",
+                              readiness_path="/ready",
+                              allowed_hosts=("setools.example",),
+                              allowed_origins=("https://setools.example",))
+    run = Mock()
+    server.mcp.run = run
+
+    server.run(transport="http", host="0.0.0.0", port=9000)
+
+    run.assert_called_once_with(transport="http",
+                                host="0.0.0.0",
+                                port=9000,
+                                path="/api/mcp",
+                                host_origin_protection=True,
+                                allowed_hosts=["setools.example"],
+                                allowed_origins=["https://setools.example"])
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_http_run_defaults_to_automatic_origin_protection(compiled_policy) -> None:
+    """Without allowlists, FastMCP protects loopback binds without rejecting non-loopback."""
+    server = SEToolsMCPServer(compiled_policy.path)
+    run = Mock()
+    server.mcp.run = run
+
+    server.run(transport="http")
+
+    assert run.call_args.kwargs["host_origin_protection"] == "auto"
+    assert run.call_args.kwargs["allowed_hosts"] is None
+    assert run.call_args.kwargs["allowed_origins"] is None
+
+    app = server.mcp.http_app(path=run.call_args.kwargs["path"],
+                              host_origin_protection=run.call_args.kwargs["host_origin_protection"],
+                              allowed_hosts=run.call_args.kwargs["allowed_hosts"],
+                              allowed_origins=run.call_args.kwargs["allowed_origins"])
+    with TestClient(app) as client:
+        assert client.get("/health", headers={"host": "setools.example"}).status_code == 200
+
+    strict = SEToolsMCPServer(compiled_policy.path, allowed_hosts=("setools.example",))
+    strict_app = strict.mcp.http_app(host_origin_protection=True,
+                                     allowed_hosts=list(strict.allowed_hosts) or None,
+                                     allowed_origins=list(strict.allowed_origins) or None)
+    with TestClient(strict_app) as client:
+        assert client.get("/health", headers={"host": "evil.example"}).status_code == 421
+        assert client.get("/health", headers={"host": "setools.example"}).status_code == 200
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_readiness_hides_details_and_handles_failures(compiled_policy) -> None:
+    """Readiness runs checks off the event loop and reports only names and states."""
+    threads: list[int] = []
+
+    def blocking() -> ReadinessResult:
+        threads.append(threading.get_ident())
+        return ReadinessResult("blocking", True, "internal-host:5432")
+
+    def broken() -> ReadinessResult:
+        raise RuntimeError("internal failure")
+
+    server = SEToolsMCPServer(compiled_policy.path, readiness_checks=(blocking, broken))
+
+    with TestClient(server.mcp.http_app()) as client:
+        response = client.get("/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {"status": "not_ready",
+                               "checks": [{"name": "blocking", "ready": True},
+                                          {"name": "broken", "ready": False}]}
+    assert threads and threads[0] != threading.get_ident()
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_http_paths_must_be_absolute_and_distinct(compiled_policy) -> None:
+    """Operational route paths are unambiguous absolute paths."""
+    with pytest.raises(ValueError, match="absolute HTTP path"):
+        SEToolsMCPServer(compiled_policy.path, mcp_path="mcp")
+
+    with pytest.raises(ValueError, match="must be distinct"):
+        SEToolsMCPServer(compiled_policy.path, health_path="/mcp")
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
