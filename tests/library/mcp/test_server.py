@@ -19,6 +19,7 @@ from starlette.testclient import TestClient
 
 from setools.mcp.extension import AuditEvent, AuditEventType, NullAuditSink, ReadinessResult
 from setools.mcp.policy import PolicyArtifact, SessionOwner
+from setools.mcp.providers import LocalPolicyProvider
 from setools.mcp.server import DiffComponent, SEToolsMCPServer
 
 # Use existing test policies; no need to create new ones just for MCP server tests
@@ -241,6 +242,161 @@ def test_hosted_query_and_depth_limits(compiled_policy) -> None:
     with pytest.raises(ValueError, match="between 1 and 4"):
         server.setools_tool_analyze_info_flow(source="t0", mode="FlowsOut",
                                               depth_limit=5, max_results=5)
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_load_policy_versions_returns_usable_reference(compiled_policy) -> None:
+    """Provider-acquired policies are usable through opaque references."""
+    class Provider:
+        """Policy provider returning the test policy."""
+
+        def acquire(self, reference: str, owner: SessionOwner) -> PolicyArtifact:
+            assert owner.session_id
+            return PolicyArtifact(reference, compiled_policy.path)
+
+    server = SEToolsMCPServer(compiled_policy.path,
+                              policy_provider=Provider(),
+                              allow_local_paths=False)
+    loaded = assert_payload(server.setools_tool_load_policy_versions(["1.2.3"]))["result"][0]
+
+    assert loaded["resolved_version"] == "1.2.3"
+    assert "/" not in loaded["reference"]
+    policy_info = assert_payload(server.setools_tool_get_policy_info(loaded["reference"]))["result"]
+    assert policy_info["version"] > 0
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+@pytest.mark.parametrize("explicit_provider", [False, True])
+def test_hosted_local_provider_cannot_acquire_paths(compiled_policy,
+                                                    monkeypatch, explicit_provider) -> None:
+    """Disabling local paths prevents acquisition through implicit or explicit local providers."""
+    provider = LocalPolicyProvider() if explicit_provider else None
+    server = SEToolsMCPServer(compiled_policy.path,
+                              policy_provider=provider, allow_local_paths=False)
+    acquire = Mock(side_effect=AssertionError("Local acquisition must not run"))
+    loader = Mock(side_effect=AssertionError("Policy loader must not run"))
+    monkeypatch.setattr(server.policy_provider, "acquire", acquire)
+    monkeypatch.setattr("setools.mcp.server.SELinuxPolicy", loader)
+
+    with pytest.raises(ValueError, match="Local policy acquisition is disabled"):
+        server.setools_tool_load_policy_versions([compiled_policy.path])
+
+    acquire.assert_not_called()
+    loader.assert_not_called()
+    assert not server._get_session_data().artifacts
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_local_provider_acquisition_requires_local_path_opt_in(compiled_policy) -> None:
+    """Enabling local paths allows local acquisition through an opaque policy reference."""
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=True)
+    loaded = assert_payload(
+        server.setools_tool_load_policy_versions([compiled_policy.path]))["result"][0]
+
+    assert "/" not in loaded["reference"]
+    policy_info = assert_payload(server.setools_tool_get_policy_info(loaded["reference"]))["result"]
+    assert policy_info["version"] > 0
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_load_policy_versions_rejects_empty_list(compiled_policy) -> None:
+    """Policy acquisition requires at least one version."""
+    server = SEToolsMCPServer(compiled_policy.path)
+
+    with pytest.raises(ValueError, match="At least one"):
+        server.setools_tool_load_policy_versions([])
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_load_policy_versions_limits_request_size(compiled_policy) -> None:
+    """A single request cannot acquire more than the configured number of versions."""
+    provider = Mock()
+    server = SEToolsMCPServer(compiled_policy.path, policy_provider=provider,
+                              max_policy_versions=2)
+
+    with pytest.raises(ValueError, match="At most 2"):
+        server.setools_tool_load_policy_versions(["1.0.0", "2.0.0", "3.0.0"])
+    provider.acquire.assert_not_called()
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+@pytest.mark.parametrize("failure", ["acquire", "session_limit", "closed"])
+def test_load_policy_versions_releases_unstored_artifacts(compiled_policy, failure) -> None:
+    """Artifacts are released if any part of a request fails or the session is released."""
+    cleaned: list[str] = []
+    server = SEToolsMCPServer(compiled_policy.path, max_session_artifacts=1)
+    session = server._get_session_data()
+
+    class Provider:
+        """Provider that fails or releases the requesting session."""
+
+        def acquire(self, reference: str, owner: SessionOwner) -> PolicyArtifact:
+            if failure == "acquire" and reference == "2.0.0":
+                raise OSError("download failed")
+            return PolicyArtifact(reference, compiled_policy.path,
+                                  cleanup=lambda: cleaned.append(reference))
+
+    server.policy_provider = Provider()
+    versions = ["1.0.0", "2.0.0"]
+    if failure == "closed":
+        versions = ["1.0.0"]
+        session.cleanup()
+        server._session_cache.get = Mock(return_value=session)  # type: ignore[method-assign]
+
+    with pytest.raises((OSError, ValueError)):
+        server.setools_tool_load_policy_versions(versions)
+
+    assert cleaned == (versions[:1] if failure == "acquire" else versions)
+    assert not session.artifacts
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_load_policy_versions_after_eviction_uses_new_session(compiled_policy) -> None:
+    """A session evicted during acquisition does not receive the new artifacts."""
+    cleaned: list[str] = []
+    owner_provider = Mock()
+    owner = SessionOwner("first")
+    owner_provider.current_owner.return_value = owner
+    server = SEToolsMCPServer(compiled_policy.path, max_session_caches=1,
+                              session_owner_provider=owner_provider)
+    evicted = server._get_session_data()
+
+    class Provider:
+        """Provider that evicts the requesting session during acquisition."""
+
+        def acquire(self, reference: str, requester: SessionOwner) -> PolicyArtifact:
+            owner_provider.current_owner.return_value = SessionOwner("other")
+            server._get_session_data()
+            owner_provider.current_owner.return_value = owner
+            return PolicyArtifact(reference, compiled_policy.path,
+                                  cleanup=lambda: cleaned.append(reference))
+
+    server.policy_provider = Provider()
+    server.setools_tool_load_policy_versions(["1.0.0"])
+
+    assert evicted.closed
+    assert not evicted.artifacts
+    assert not cleaned
+    assert len(server._get_session_data().artifacts) == 1
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_load_policy_versions_audit_omits_requested_reference(compiled_policy) -> None:
+    """Untrusted requested references and error messages are not audited."""
+    sink = Mock()
+    provider = Mock()
+    provider.acquire.side_effect = OSError("secret-token-in-message")
+    server = SEToolsMCPServer(compiled_policy.path, policy_provider=provider, audit_sink=sink)
+
+    with pytest.raises(OSError):
+        server.setools_tool_load_policy_versions(["../untrusted"])
+
+    events = [c.args[0] for c in sink.emit.call_args_list]
+    assert [e.event_type for e in events] == [AuditEventType.policy_acquire_started,
+                                              AuditEventType.policy_acquire_failed]
+    assert "untrusted" not in repr(events)
+    assert "secret" not in repr(events)
+    assert events[1].details == {"error": "OSError"}
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)

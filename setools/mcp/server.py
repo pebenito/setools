@@ -29,9 +29,10 @@ from .. import (BoolQuery, BoundsQuery, BoundsRuletype, CategoryQuery, CommonQue
                 TypeAttributeQuery, TypeQuery, UserQuery)
 from .encoder import MCPEncoder
 from .extension import AuditEvent, AuditEventType, AuditSink, NullAuditSink, ReadinessCheck
-from .policy import PolicyProvider, SessionOwnerProvider
+from .policy import PolicyArtifact, PolicyProvider, SessionOwnerProvider
 from .providers import LocalPolicyProvider
-from .session import FastMCPSessionOwnerProvider, SessionCache, SessionData
+from .session import (DEFAULT_MAX_SESSION_ARTIFACTS, FastMCPSessionOwnerProvider, SessionCache,
+                      SessionData)
 
 __all__ = ("MCPEncoder",)
 
@@ -40,6 +41,7 @@ PROMPT_PREFIX: Final[str] = "setools_prompt_"
 DEFAULT_MAX_SESSION_CACHES: Final[int] = 64
 DEFAULT_MAX_QUERY_RESULTS: Final[int] = 1000
 DEFAULT_MAX_ANALYSIS_DEPTH: Final[int] = 10
+DEFAULT_MAX_POLICY_VERSIONS: Final[int] = 4
 DEFAULT_INSTRUCTIONS: Final[str] = ("SELinux policy analysis tools built on the setools library.  "
                                     "Supports querying TE/RBAC/MLS rules, enumerating policy "
                                     "components, domain transition analysis, information flow "
@@ -75,6 +77,8 @@ class SEToolsMCPServer:
                  allow_local_paths: bool = True,
                  max_query_results: int = DEFAULT_MAX_QUERY_RESULTS,
                  max_analysis_depth: int = DEFAULT_MAX_ANALYSIS_DEPTH,
+                 max_policy_versions: int = DEFAULT_MAX_POLICY_VERSIONS,
+                 max_session_artifacts: int = DEFAULT_MAX_SESSION_ARTIFACTS,
                  readiness_checks: Iterable[ReadinessCheck] = (),
                  audit_sink: AuditSink | None = None,
                  name: str = "setools",
@@ -96,7 +100,11 @@ class SEToolsMCPServer:
         self.max_analysis_depth: int = max_analysis_depth
         self.readiness_checks: tuple[ReadinessCheck, ...] = tuple(readiness_checks)
         self.audit_sink: AuditSink = audit_sink if audit_sink is not None else NullAuditSink()
+        if max_policy_versions < 1:
+            raise ValueError("max_policy_versions must be at least 1")
+        self.max_policy_versions: int = max_policy_versions
         self._session_cache: SessionCache = SessionCache(max_session_caches,
+                                                         max_artifacts=max_session_artifacts,
                                                          on_evict=self._emit_session_evicted)
         self._default_policy: SELinuxPolicy | None = None
         self._default_policy_lock: threading.Lock = threading.Lock()
@@ -269,6 +277,15 @@ class SEToolsMCPServer:
                                         reference=reference,
                                         resolved_version=resolved_version))
 
+    def _release_artifacts(self, artifacts: Iterable[PolicyArtifact]) -> None:
+        """Release artifacts that were not stored in a session."""
+        for artifact in artifacts:
+            if artifact.cleanup is not None:
+                try:
+                    artifact.cleanup()
+                except Exception as ex:  # pylint: disable=broad-except
+                    self.log.error(f"Failed to release policy artifact: {type(ex).__name__}")
+
     def _emit_session_evicted(self, session: SessionData) -> None:
         """Emit an audit event for a session released by cache eviction."""
         session_id = session.owner.session_id if session.owner is not None else ""
@@ -324,6 +341,66 @@ class SEToolsMCPServer:
     #
     # MCP Tools
     #
+
+    def setools_tool_load_policy_versions(
+        self,
+        versions: Annotated[
+            list[str],
+            "Policy versions or provider-specific references to acquire.",
+        ],
+    ) -> str:
+        """
+        Acquire policy versions and return opaque references for analysis tools.
+
+        Acquired policies are validated and isolated to the active MCP session.
+        """
+        if not versions:
+            raise ValueError("At least one policy version is required.")
+        if len(versions) > self.max_policy_versions:
+            raise ValueError(f"At most {self.max_policy_versions} policy versions may be "
+                             "loaded per request.")
+        if not self.allow_local_paths and isinstance(self.policy_provider, LocalPolicyProvider):
+            raise ValueError("Local policy acquisition is disabled.")
+
+        owner = self.session_owner_provider.current_owner()
+        pending: list[PolicyArtifact] = []
+        policies: list[SELinuxPolicy] = []
+        try:
+            for version in versions:
+                # The requested reference is untrusted input, so it is not audited.
+                self.audit_sink.emit(AuditEvent(AuditEventType.policy_acquire_started,
+                                                owner.session_id))
+                try:
+                    artifact = self.policy_provider.acquire(version, owner)
+                    pending.append(artifact)
+                    policies.append(SELinuxPolicy(str(artifact.policy_path)))
+                except Exception as ex:
+                    self.audit_sink.emit(AuditEvent(AuditEventType.policy_acquire_failed,
+                                                    owner.session_id,
+                                                    details={"error": type(ex).__name__}))
+                    raise
+
+            # Look up the session after acquisition, which may be slow enough for the
+            # session to be evicted meanwhile.  A released session rejects new artifacts.
+            session = self._session_cache.get(owner)
+            references = session.add_artifacts(pending)
+        except BaseException:
+            self._release_artifacts(pending)
+            raise
+
+        results: list[dict[str, str]] = []
+        with session.lock:
+            for reference, artifact, policy in zip(references, pending, policies):
+                if not session.closed:
+                    session.policies[str(artifact.policy_path)] = policy
+                results.append({"reference": reference,
+                                "resolved_version": artifact.resolved_version})
+                self.audit_sink.emit(AuditEvent(AuditEventType.policy_acquire_completed,
+                                                owner.session_id,
+                                                reference=reference,
+                                                resolved_version=artifact.resolved_version))
+
+        return self._serialize_results(results, len(results), False)
 
     def setools_tool_get_policy_info(
         self,
