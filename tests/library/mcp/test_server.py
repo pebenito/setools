@@ -11,16 +11,17 @@
 import enum
 import json
 import threading
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import anyio
 from fastmcp import Client
 import pytest
 from starlette.testclient import TestClient
 
+from setools.mcp.config import MCPConfig
 from setools.mcp.extension import AuditEvent, AuditEventType, NullAuditSink, ReadinessResult
-from setools.mcp.policy import PolicyArtifact, SessionOwner
-from setools.mcp.providers import LocalPolicyProvider
+from setools.mcp.policy import PolicyArtifact, PolicyProviderSelection, SessionOwner
+from setools.mcp.providers import AzureDevOpsUniversalPackageProvider, LocalPolicyProvider
 from setools.mcp.server import DiffComponent, SEToolsMCPServer
 
 # Use existing test policies; no need to create new ones just for MCP server tests
@@ -47,7 +48,7 @@ def test_diff_component_values() -> None:
 @pytest.mark.obj_args(SELINUX_POLICY)
 def test_server_extension_defaults(compiled_policy) -> None:
     """Existing construction uses reusable no-op extension defaults."""
-    server = SEToolsMCPServer(compiled_policy.path)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path))
 
     assert server.policy_provider is not None
     assert server.session_owner_provider is not None
@@ -59,7 +60,8 @@ def test_server_extension_defaults(compiled_policy) -> None:
 @pytest.mark.obj_args(SELINUX_POLICY)
 def test_server_rejects_local_paths_when_disabled(compiled_policy) -> None:
     """Hosted deployments can reject arbitrary server-local policy paths."""
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    config = MCPConfig(default_policy=compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(config)
 
     with pytest.raises(ValueError, match="Unknown policy reference"):
         server._load_policy(compiled_policy.path)
@@ -69,7 +71,8 @@ def test_server_rejects_local_paths_when_disabled(compiled_policy) -> None:
 @pytest.mark.parametrize("fc_path", [None, FILE_CONTEXTS, "/etc/passwd", "../private"])
 def test_hosted_file_contexts_reject_local_paths(compiled_policy, fc_path, monkeypatch) -> None:
     """Hosted file-context lookup rejects local paths before accessing the filesystem."""
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    config = MCPConfig(default_policy=compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(config)
     loader = Mock(side_effect=AssertionError("Filesystem loader must not run"))
     monkeypatch.setattr("setools.mcp.server.FileContexts", loader)
     with pytest.raises(ValueError, match="reference"):
@@ -80,7 +83,8 @@ def test_hosted_file_contexts_reject_local_paths(compiled_policy, fc_path, monke
 @pytest.mark.obj_args(SELINUX_POLICY)
 def test_hosted_permission_map_rejects_local_paths(compiled_policy, monkeypatch) -> None:
     """Hosted information-flow analysis rejects server-local permission maps."""
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    config = MCPConfig(default_policy=compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(config)
     loader = Mock(side_effect=AssertionError("Permission-map loader must not run"))
     monkeypatch.setattr("setools.mcp.server.PermissionMap", loader)
     with pytest.raises(ValueError, match="permission-map paths are disabled"):
@@ -92,7 +96,8 @@ def test_hosted_permission_map_rejects_local_paths(compiled_policy, monkeypatch)
 def test_hosted_diff_and_contexts_use_owned_references(compiled_policy, monkeypatch) -> None:
     """Hosted tools accept owned artifact references but reject raw policy paths."""
     from pathlib import Path
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    config = MCPConfig(default_policy=compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(config)
     reference = server._get_session_data().add_artifact(PolicyArtifact("1.2.3",
                                                                        Path(compiled_policy.path),
                                                                        Path(FILE_CONTEXTS)))
@@ -114,10 +119,18 @@ def test_hosted_diff_and_contexts_use_owned_references(compiled_policy, monkeypa
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
-def test_session_caches_must_be_positive(compiled_policy) -> None:
-    """The server rejects an unusable session-cache capacity."""
-    with pytest.raises(ValueError, match="at least 1"):
-        SEToolsMCPServer(compiled_policy.path, max_session_caches=0)
+def test_server_uses_configured_cache_capacity(compiled_policy) -> None:
+    """Configured capacity bounds the server's operational session cache."""
+    owner_provider = Mock()
+    owner_provider.current_owner.return_value = SessionOwner("first")
+    config = MCPConfig(default_policy=compiled_policy.path, max_session_caches=1)
+    server = SEToolsMCPServer(config, session_owner_provider=owner_provider)
+    first = server._get_session_data()
+
+    owner_provider.current_owner.return_value = SessionOwner("second")
+    server._get_session_data()
+
+    assert first.closed
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
@@ -125,7 +138,8 @@ def test_default_policy_is_shared_and_selected_by_empty_path(compiled_policy) ->
     """Sessions share one default policy, and an empty path selects it."""
     owner_provider = Mock()
     owner_provider.current_owner.return_value = SessionOwner("first")
-    server = SEToolsMCPServer(compiled_policy.path, session_owner_provider=owner_provider)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path),
+                              session_owner_provider=owner_provider)
     default = server._load_policy()
 
     owner_provider.current_owner.return_value = SessionOwner("second")
@@ -137,7 +151,7 @@ def test_default_policy_is_shared_and_selected_by_empty_path(compiled_policy) ->
 @pytest.mark.obj_args(SELINUX_POLICY)
 def test_default_file_contexts_ignore_default_policy(compiled_policy, monkeypatch) -> None:
     """Without fc_path, local servers use the system file_contexts, not the policy path."""
-    server = SEToolsMCPServer(compiled_policy.path)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path))
     loader = Mock()
     monkeypatch.setattr("setools.mcp.server.FileContexts", loader)
 
@@ -153,8 +167,8 @@ def test_eviction_and_shutdown_release_artifacts(compiled_policy, tmp_path) -> N
     sink = Mock()
     owner_provider = Mock()
     owner_provider.current_owner.return_value = SessionOwner("first")
-    server = SEToolsMCPServer(compiled_policy.path, max_session_caches=1,
-                              session_owner_provider=owner_provider, audit_sink=sink)
+    config = MCPConfig(default_policy=compiled_policy.path, max_session_caches=1)
+    server = SEToolsMCPServer(config, session_owner_provider=owner_provider, audit_sink=sink)
     server._get_session_data().add_artifact(
         PolicyArtifact("1.0.0", tmp_path, cleanup=lambda: cleaned.append("first")))
 
@@ -176,7 +190,8 @@ def test_eviction_and_shutdown_release_artifacts(compiled_policy, tmp_path) -> N
 def test_hosted_get_policy_info_omits_path(compiled_policy) -> None:
     """Hosted policy metadata omits server-local filesystem paths."""
     from pathlib import Path
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path,
+                                        allow_local_paths=False))
     reference = server._get_session_data().add_artifact(
         PolicyArtifact("1.2.3", Path(compiled_policy.path)))
 
@@ -191,7 +206,8 @@ def test_hosted_get_policy_info_omits_path(compiled_policy) -> None:
 @pytest.mark.obj_args(SELINUX_POLICY)
 def test_hosted_server_masks_tool_error_details(compiled_policy, monkeypatch) -> None:
     """Hosted MCP calls do not return raw internal exception strings to clients."""
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path,
+                                        allow_local_paths=False))
     monkeypatch.setattr(server, "_load_policy",
                         Mock(side_effect=OSError("/var/cache/secret/policy.bin")))
 
@@ -210,7 +226,8 @@ def test_hosted_server_masks_tool_error_details(compiled_policy, monkeypatch) ->
 def test_released_session_rejects_policy_and_context_loads(compiled_policy) -> None:
     """Loading into an already-evicted session fails instead of mutating closed state."""
     from pathlib import Path
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path,
+                                        allow_local_paths=False))
     session = server._get_session_data()
     ref = session.add_artifact(PolicyArtifact("1.2.3", Path(compiled_policy.path),
                                               Path(FILE_CONTEXTS)))
@@ -228,8 +245,9 @@ def test_released_session_rejects_policy_and_context_loads(compiled_policy) -> N
 @pytest.mark.obj_args(SELINUX_POLICY)
 def test_hosted_query_and_depth_limits(compiled_policy) -> None:
     """Hosted deployments enforce positive bounded result and analysis depth limits."""
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False,
-                              max_query_results=5, max_analysis_depth=4)
+    config = MCPConfig(default_policy=compiled_policy.path, allow_local_paths=False,
+                       max_query_results=5, max_analysis_depth=4)
+    server = SEToolsMCPServer(config)
 
     with pytest.raises(ValueError, match="at least 1"):
         server.setools_tool_search_te_rules(max_results=0)
@@ -255,9 +273,8 @@ def test_load_policy_versions_returns_usable_reference(compiled_policy) -> None:
             assert owner.session_id
             return PolicyArtifact(reference, compiled_policy.path)
 
-    server = SEToolsMCPServer(compiled_policy.path,
-                              policy_provider=Provider(),
-                              allow_local_paths=False)
+    config = MCPConfig(default_policy=compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(config, policy_provider=Provider())
     loaded = assert_payload(server.setools_tool_load_policy_versions(["1.2.3"]))["result"][0]
 
     assert loaded["resolved_version"] == "1.2.3"
@@ -272,8 +289,8 @@ def test_hosted_local_provider_cannot_acquire_paths(compiled_policy,
                                                     monkeypatch, explicit_provider) -> None:
     """Disabling local paths prevents acquisition through implicit or explicit local providers."""
     provider = LocalPolicyProvider() if explicit_provider else None
-    server = SEToolsMCPServer(compiled_policy.path,
-                              policy_provider=provider, allow_local_paths=False)
+    config = MCPConfig(default_policy=compiled_policy.path, allow_local_paths=False)
+    server = SEToolsMCPServer(config, policy_provider=provider)
     acquire = Mock(side_effect=AssertionError("Local acquisition must not run"))
     loader = Mock(side_effect=AssertionError("Policy loader must not run"))
     monkeypatch.setattr(server.policy_provider, "acquire", acquire)
@@ -290,7 +307,8 @@ def test_hosted_local_provider_cannot_acquire_paths(compiled_policy,
 @pytest.mark.obj_args(SELINUX_POLICY)
 def test_local_provider_acquisition_requires_local_path_opt_in(compiled_policy) -> None:
     """Enabling local paths allows local acquisition through an opaque policy reference."""
-    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=True)
+    config = MCPConfig(default_policy=compiled_policy.path, allow_local_paths=True)
+    server = SEToolsMCPServer(config)
     loaded = assert_payload(
         server.setools_tool_load_policy_versions([compiled_policy.path]))["result"][0]
 
@@ -302,7 +320,7 @@ def test_local_provider_acquisition_requires_local_path_opt_in(compiled_policy) 
 @pytest.mark.obj_args(SELINUX_POLICY)
 def test_load_policy_versions_rejects_empty_list(compiled_policy) -> None:
     """Policy acquisition requires at least one version."""
-    server = SEToolsMCPServer(compiled_policy.path)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path))
 
     with pytest.raises(ValueError, match="At least one"):
         server.setools_tool_load_policy_versions([])
@@ -312,8 +330,8 @@ def test_load_policy_versions_rejects_empty_list(compiled_policy) -> None:
 def test_load_policy_versions_limits_request_size(compiled_policy) -> None:
     """A single request cannot acquire more than the configured number of versions."""
     provider = Mock()
-    server = SEToolsMCPServer(compiled_policy.path, policy_provider=provider,
-                              max_policy_versions=2)
+    config = MCPConfig(default_policy=compiled_policy.path, max_policy_versions=2)
+    server = SEToolsMCPServer(config, policy_provider=provider)
 
     with pytest.raises(ValueError, match="At most 2"):
         server.setools_tool_load_policy_versions(["1.0.0", "2.0.0", "3.0.0"])
@@ -325,7 +343,8 @@ def test_load_policy_versions_limits_request_size(compiled_policy) -> None:
 def test_load_policy_versions_releases_unstored_artifacts(compiled_policy, failure) -> None:
     """Artifacts are released if any part of a request fails or the session is released."""
     cleaned: list[str] = []
-    server = SEToolsMCPServer(compiled_policy.path, max_session_artifacts=1)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path,
+                                        max_session_artifacts=1))
     session = server._get_session_data()
 
     class Provider:
@@ -358,8 +377,8 @@ def test_load_policy_versions_after_eviction_uses_new_session(compiled_policy) -
     owner_provider = Mock()
     owner = SessionOwner("first")
     owner_provider.current_owner.return_value = owner
-    server = SEToolsMCPServer(compiled_policy.path, max_session_caches=1,
-                              session_owner_provider=owner_provider)
+    config = MCPConfig(default_policy=compiled_policy.path, max_session_caches=1)
+    server = SEToolsMCPServer(config, session_owner_provider=owner_provider)
     evicted = server._get_session_data()
 
     class Provider:
@@ -387,7 +406,8 @@ def test_load_policy_versions_audit_omits_requested_reference(compiled_policy) -
     sink = Mock()
     provider = Mock()
     provider.acquire.side_effect = OSError("secret-token-in-message")
-    server = SEToolsMCPServer(compiled_policy.path, policy_provider=provider, audit_sink=sink)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path),
+                              policy_provider=provider, audit_sink=sink)
 
     with pytest.raises(OSError):
         server.setools_tool_load_policy_versions(["../untrusted"])
@@ -401,18 +421,20 @@ def test_load_policy_versions_audit_omits_requested_reference(compiled_policy) -
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
-def test_http_run_uses_configured_security(compiled_policy) -> None:
+def test_http_run_uses_configured_security(compiled_policy, monkeypatch) -> None:
     """HTTP startup forwards configured paths and request protection."""
-    server = SEToolsMCPServer(compiled_policy.path,
-                              mcp_path="/api/mcp",
-                              health_path="/live",
-                              readiness_path="/ready",
-                              allowed_hosts=("setools.example",),
-                              allowed_origins=("https://setools.example",))
+    config = MCPConfig(default_policy=compiled_policy.path,
+                       transport="http", host="0.0.0.0", port=9000,
+                       mcp_path="/api/mcp", health_path="/live", readiness_path="/ready",
+                       host_origin_protection=True,
+                       allowed_hosts=("setools.example",),
+                       allowed_origins=("https://setools.example",),
+                       allow_unauthenticated=True)
+    server = SEToolsMCPServer(config)
     run = Mock()
-    server.mcp.run = run
+    monkeypatch.setattr(server.mcp, "run", run)
 
-    server.run(transport="http", host="0.0.0.0", port=9000)
+    server.run()
 
     run.assert_called_once_with(transport="http",
                                 host="0.0.0.0",
@@ -424,13 +446,15 @@ def test_http_run_uses_configured_security(compiled_policy) -> None:
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
-def test_http_run_defaults_to_automatic_origin_protection(compiled_policy) -> None:
+def test_http_run_defaults_to_automatic_origin_protection(compiled_policy,
+                                                          monkeypatch) -> None:
     """Without allowlists, FastMCP protects loopback binds without rejecting non-loopback."""
-    server = SEToolsMCPServer(compiled_policy.path)
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path, transport="http",
+                                        allow_local_paths=True))
     run = Mock()
-    server.mcp.run = run
+    monkeypatch.setattr(server.mcp, "run", run)
 
-    server.run(transport="http")
+    server.run()
 
     assert run.call_args.kwargs["host_origin_protection"] == "auto"
     assert run.call_args.kwargs["allowed_hosts"] is None
@@ -443,10 +467,13 @@ def test_http_run_defaults_to_automatic_origin_protection(compiled_policy) -> No
     with TestClient(app) as client:
         assert client.get("/health", headers={"host": "setools.example"}).status_code == 200
 
-    strict = SEToolsMCPServer(compiled_policy.path, allowed_hosts=("setools.example",))
-    strict_app = strict.mcp.http_app(host_origin_protection=True,
-                                     allowed_hosts=list(strict.allowed_hosts) or None,
-                                     allowed_origins=list(strict.allowed_origins) or None)
+    strict = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path, transport="http",
+                                        allow_local_paths=True,
+                                        host_origin_protection=True,
+                                        allowed_hosts=("setools.example",)))
+    strict_app = strict.mcp.http_app(host_origin_protection=strict.config.host_origin_protection,
+                                     allowed_hosts=list(strict.config.allowed_hosts) or None,
+                                     allowed_origins=list(strict.config.allowed_origins) or None)
     with TestClient(strict_app) as client:
         assert client.get("/health", headers={"host": "evil.example"}).status_code == 421
         assert client.get("/health", headers={"host": "setools.example"}).status_code == 200
@@ -464,7 +491,8 @@ def test_readiness_hides_details_and_handles_failures(compiled_policy) -> None:
     def broken() -> ReadinessResult:
         raise RuntimeError("internal failure")
 
-    server = SEToolsMCPServer(compiled_policy.path, readiness_checks=(blocking, broken))
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path),
+                              readiness_checks=(blocking, broken))
 
     with TestClient(server.mcp.http_app()) as client:
         response = client.get("/ready")
@@ -477,13 +505,61 @@ def test_readiness_hides_details_and_handles_failures(compiled_policy) -> None:
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
-def test_http_paths_must_be_absolute_and_distinct(compiled_policy) -> None:
-    """Operational route paths are unambiguous absolute paths."""
-    with pytest.raises(ValueError, match="absolute HTTP path"):
-        SEToolsMCPServer(compiled_policy.path, mcp_path="mcp")
+@pytest.mark.parametrize("auth, allow_local_paths, allow_unauthenticated, refused",
+                         [(None, None, False, True),
+                          (None, False, False, True),
+                          (None, None, True, False),
+                          (None, True, False, False),
+                          (Mock(), None, False, False)])
+def test_hosted_http_requires_authentication(compiled_policy, auth, allow_local_paths,
+                                             allow_unauthenticated, refused) -> None:
+    """Hosted HTTP servers need caller identity unless explicitly opted out."""
+    config = MCPConfig(default_policy=compiled_policy.path, transport="http",
+                       allow_local_paths=allow_local_paths,
+                       allow_unauthenticated=allow_unauthenticated)
+    if refused:
+        with pytest.raises(ValueError, match="requires an authentication provider"):
+            SEToolsMCPServer(config, auth=auth)
+    else:
+        with patch("setools.mcp.server.FastMCP"):
+            SEToolsMCPServer(config, auth=auth)
 
-    with pytest.raises(ValueError, match="must be distinct"):
-        SEToolsMCPServer(compiled_policy.path, health_path="/mcp")
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_stdio_run_omits_http_settings(compiled_policy, monkeypatch) -> None:
+    """Stdio startup does not forward HTTP-only configuration to the MCP runtime."""
+    server = SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path))
+    run = Mock()
+    monkeypatch.setattr(server.mcp, "run", run)
+
+    server.run()
+
+    run.assert_called_once_with(transport="stdio")
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_server_creates_configured_provider(compiled_policy, tmp_path) -> None:
+    """The server constructs the selected provider from its configuration options."""
+    config = MCPConfig(default_policy=compiled_policy.path,
+                       policy_provider=PolicyProviderSelection("azure_devops", {
+                           "organization": "https://dev.azure.com/example",
+                           "project": "SELinux",
+                           "scope": "project",
+                           "feed": "policies",
+                           "package": "compiled-policy",
+                           "policy_file": "policy/policy.bin",
+                           "base_dir": str(tmp_path)}))
+    server = SEToolsMCPServer(config)
+
+    assert isinstance(server.policy_provider, AzureDevOpsUniversalPackageProvider)
+
+
+def test_server_does_not_ignore_unknown_provider() -> None:
+    """Unknown configured providers fail instead of silently falling back to local access."""
+    config = MCPConfig(policy_provider=PolicyProviderSelection("unavailable", {}))
+
+    with pytest.raises(ValueError, match="Unknown policy provider"):
+        SEToolsMCPServer(config)
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
@@ -514,32 +590,35 @@ def test_server_accepts_extension_dependencies(compiled_policy) -> None:
     def ready() -> ReadinessResult:
         return ReadinessResult("test", True)
 
-    server = SEToolsMCPServer(compiled_policy.path,
+    config = MCPConfig(default_policy=compiled_policy.path, name="custom-setools",
+                       instructions="Custom instructions.",
+                       policy_provider=PolicyProviderSelection("unavailable", {}))
+    server = SEToolsMCPServer(config,
                               policy_provider=policy_provider,
                               session_owner_provider=owner_provider,
                               readiness_checks=(ready,),
-                              audit_sink=audit_sink,
-                              name="custom-setools",
-                              instructions="Custom instructions.")
+                              audit_sink=audit_sink)
 
+    assert server.config is config
     assert server.policy_provider is policy_provider
     assert server.session_owner_provider is owner_provider
     assert server.readiness_checks == (ready,)
     assert server.audit_sink is audit_sink
     assert server.mcp.name == "custom-setools"
+    assert server.mcp.instructions == "Custom instructions."
 
 
 @pytest.fixture(scope="class")
 def mcp_server(compiled_policy) -> SEToolsMCPServer:
     """Return an SEToolsMCPServer loaded with the policy from @pytest.mark.obj_args."""
-    return SEToolsMCPServer(compiled_policy.path)
+    return SEToolsMCPServer(MCPConfig(default_policy=compiled_policy.path))
 
 
 @pytest.fixture(scope="class")
 def mcp_server2(policy_pair: tuple) -> tuple[SEToolsMCPServer, str, str]:
     """Return an SEToolsMCPServer loaded with the two policies from @pytest.mark.obj_args."""
     left, right = policy_pair
-    mcp = SEToolsMCPServer(left.path)
+    mcp = SEToolsMCPServer(MCPConfig(default_policy=left.path))
     mcp._load_policy(right.path)  # Preload the second policy so it's available for diffing
     return mcp, left.path, right.path
 

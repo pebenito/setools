@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 
-from setools.mcp import SEToolsMCPServer
+from setools.mcp import (MCPConfig, SEToolsMCPServer,
+                         default_policy_provider_registry)
 import argparse
+from dataclasses import replace
 import logging
 import sys
 import warnings
@@ -10,12 +12,13 @@ import warnings
 parser = argparse.ArgumentParser(
     description="SETools MCP server — exposes setools policy analysis as MCP tools.")
 parser.add_argument("--policy", metavar="PATH", help="Default SELinux policy file to analyze.")
-parser.add_argument("--transport", choices=["stdio", "http"], default="stdio",
-                    help="MCP transport to use (stdio, http, default: stdio).")
-parser.add_argument("--host", default="127.0.0.1",
-                    help="Bind host for HTTP transport (default: 127.0.0.1).")
-parser.add_argument("--port", type=int, default=8000,
-                    help="Bind port for HTTP transport (default: 8000).")
+parser.add_argument("--config", metavar="PATH",
+                    help="Reusable server and policy-provider configuration file.")
+parser.add_argument("--transport", choices=MCPConfig.TRANSPORTS,
+                    help=f"MCP transport (default without --config: {MCPConfig.transport}).")
+parser.add_argument("--host", help=f"Bind host for HTTP transport (default: {MCPConfig.host}).")
+parser.add_argument("--port", type=int,
+                    help=f"Bind port for HTTP transport (default: {MCPConfig.port}).")
 parser.add_argument("-v", "--verbose", action="store_true",
                     help="Print extra informational messages")
 parser.add_argument("--debug", action="store_true", dest="debug", help="Enable debugging.")
@@ -36,8 +39,19 @@ else:
         warnings.simplefilter("ignore")
 
 try:
-    server = SEToolsMCPServer(default_policy=args.policy)
-    server.run(transport=args.transport, host=args.host, port=args.port)
+    config = MCPConfig.from_file(args.config) if args.config else MCPConfig()
+    overrides = {name: value for name, value in (("default_policy", args.policy),
+                                                 ("transport", args.transport),
+                                                 ("host", args.host),
+                                                 ("port", args.port)) if value is not None}
+    config = replace(config, **overrides)
+    if args.config:
+        provider_registry = default_policy_provider_registry(load_entry_points=True)
+        provider = config.create_policy_provider(provider_registry)
+        server = SEToolsMCPServer(config, policy_provider=provider)
+    else:
+        server = SEToolsMCPServer(config)
+    server.run()
 
 except AssertionError:
     # Always provide a traceback for assertion errors

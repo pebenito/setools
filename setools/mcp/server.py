@@ -8,7 +8,7 @@ import itertools
 import json
 import logging
 import threading
-from typing import Annotated, Any, AsyncIterator, Final, Iterable, Literal
+from typing import Annotated, Any, AsyncIterator, Final, Iterable
 
 try:
     import anyio.to_thread
@@ -31,29 +31,18 @@ from .. import (BoolQuery, BoundsQuery, BoundsRuletype, CategoryQuery, CommonQue
                 PortconQuery, PortconRange, PirqconQuery, RBACRuleQuery, RBACRuletype, RoleQuery,
                 RoleTypesQuery, SELinuxPolicy, SensitivityQuery, TERuleQuery, TERuletype,
                 TypeAttributeQuery, TypeQuery, UserQuery)
+from .config import MCPConfig
 from .encoder import MCPEncoder
 from .extension import (AuditEvent, AuditEventType, AuditSink, NullAuditSink, ReadinessCheck,
                         ReadinessResult)
 from .policy import PolicyArtifact, PolicyProvider, SessionOwnerProvider
-from .providers import LocalPolicyProvider
-from .session import (DEFAULT_MAX_SESSION_ARTIFACTS, FastMCPSessionOwnerProvider, SessionCache,
-                      SessionData)
+from .providers import LocalPolicyProvider, default_policy_provider_registry
+from .session import FastMCPSessionOwnerProvider, SessionCache, SessionData
 
 __all__ = ("MCPEncoder",)
 
 TOOL_PREFIX: Final[str] = "setools_tool_"
 PROMPT_PREFIX: Final[str] = "setools_prompt_"
-DEFAULT_MAX_SESSION_CACHES: Final[int] = 64
-DEFAULT_MAX_QUERY_RESULTS: Final[int] = 1000
-DEFAULT_MAX_ANALYSIS_DEPTH: Final[int] = 10
-DEFAULT_MAX_POLICY_VERSIONS: Final[int] = 4
-DEFAULT_MCP_PATH: Final[str] = "/mcp"
-DEFAULT_HEALTH_PATH: Final[str] = "/health"
-DEFAULT_READINESS_PATH: Final[str] = "/ready"
-DEFAULT_INSTRUCTIONS: Final[str] = ("SELinux policy analysis tools built on the setools library.  "
-                                    "Supports querying TE/RBAC/MLS rules, enumerating policy "
-                                    "components, domain transition analysis, information flow "
-                                    "analysis, policy diffing,and file_context lookup.")
 
 
 class DiffComponent(enum.StrEnum):
@@ -77,68 +66,45 @@ class SEToolsMCPServer:
     calls outside an MCP request use a bounded local fallback cache.
     """
 
-    def __init__(self, default_policy: str | None = None,
+    def __init__(self, config: MCPConfig | None = None, *,
                  auth: AuthProvider | None = None,
-                 max_session_caches: int = DEFAULT_MAX_SESSION_CACHES, *,
                  policy_provider: PolicyProvider | None = None,
                  session_owner_provider: SessionOwnerProvider | None = None,
-                 allow_local_paths: bool = True,
-                 max_query_results: int = DEFAULT_MAX_QUERY_RESULTS,
-                 max_analysis_depth: int = DEFAULT_MAX_ANALYSIS_DEPTH,
-                 max_policy_versions: int = DEFAULT_MAX_POLICY_VERSIONS,
-                 max_session_artifacts: int = DEFAULT_MAX_SESSION_ARTIFACTS,
                  readiness_checks: Iterable[ReadinessCheck] = (),
-                 audit_sink: AuditSink | None = None,
-                 name: str = "setools",
-                 instructions: str = DEFAULT_INSTRUCTIONS,
-                 mcp_path: str = DEFAULT_MCP_PATH,
-                 health_path: str = DEFAULT_HEALTH_PATH,
-                 readiness_path: str = DEFAULT_READINESS_PATH,
-                 allowed_hosts: Iterable[str] = (),
-                 allowed_origins: Iterable[str] = ()) -> None:
+                 audit_sink: AuditSink | None = None) -> None:
         self.log: logging.Logger = logging.getLogger(__name__)
-        self.default_policy: str | None = default_policy
+        self.config: MCPConfig = config if config is not None else MCPConfig()
         self.policy_provider: PolicyProvider = (
-            policy_provider if policy_provider is not None else LocalPolicyProvider())
+            policy_provider if policy_provider is not None
+            else self.config.create_policy_provider(default_policy_provider_registry()))
         self.session_owner_provider: SessionOwnerProvider = (
             session_owner_provider
             if session_owner_provider is not None
             else FastMCPSessionOwnerProvider())
-        self.allow_local_paths: bool = allow_local_paths
-        if max_query_results < 1:
-            raise ValueError("max_query_results must be at least 1")
-        if max_analysis_depth < 1:
-            raise ValueError("max_analysis_depth must be at least 1")
-        self.max_query_results: int = max_query_results
-        self.max_analysis_depth: int = max_analysis_depth
         self.readiness_checks: tuple[ReadinessCheck, ...] = tuple(readiness_checks)
         self.audit_sink: AuditSink = audit_sink if audit_sink is not None else NullAuditSink()
-        if max_policy_versions < 1:
-            raise ValueError("max_policy_versions must be at least 1")
-        self.max_policy_versions: int = max_policy_versions
-        self._session_cache: SessionCache = SessionCache(max_session_caches,
-                                                         max_artifacts=max_session_artifacts,
-                                                         on_evict=self._emit_session_evicted)
+        if (self.config.transport == "http" and not self.config.local_paths_allowed
+                and auth is None and not self.config.allow_unauthenticated):
+            raise ValueError("HTTP transport without local paths requires an authentication "
+                             "provider; set allow_unauthenticated only when an authenticating "
+                             "proxy identifies callers.")
+        self._session_cache: SessionCache = SessionCache(
+            self.config.max_session_caches,
+            max_artifacts=self.config.max_session_artifacts,
+            on_evict=self._emit_session_evicted)
         self._default_policy: SELinuxPolicy | None = None
         self._default_policy_lock: threading.Lock = threading.Lock()
-        self.mcp_path = self._validate_http_path(mcp_path, "mcp_path")
-        self.health_path = self._validate_http_path(health_path, "health_path")
-        self.readiness_path = self._validate_http_path(readiness_path, "readiness_path")
-        if len({self.mcp_path, self.health_path, self.readiness_path}) != 3:
-            raise ValueError("MCP, health, and readiness paths must be distinct.")
-        self.allowed_hosts = tuple(allowed_hosts)
-        self.allowed_origins = tuple(allowed_origins)
 
-        if self.default_policy is not None or self.allow_local_paths:
+        if self.config.default_policy is not None or self.config.local_paths_allowed:
             try:
                 policy = self._load_default_policy()
                 self.log.debug(f"Loaded default policy from {policy.path}")
             except (OSError, RuntimeError) as err:
                 self.log.error(f"Failed to load default policy: {err}")
 
-        self.mcp: FastMCP = FastMCP(name, instructions=instructions, auth=auth,
-                                    lifespan=self._lifespan,
-                                    mask_error_details=not self.allow_local_paths)
+        self.mcp: FastMCP = FastMCP(self.config.name, instructions=self.config.instructions,
+                                    auth=auth, lifespan=self._lifespan,
+                                    mask_error_details=not self.config.local_paths_allowed)
 
         for name in dir(self):
             if name.startswith(TOOL_PREFIX) and callable(getattr(self, name)):
@@ -149,22 +115,20 @@ class SEToolsMCPServer:
                 self.mcp.prompt()(getattr(self, name))
         self._register_operational_routes()
 
-    def run(self, transport: Literal["stdio", "http"] = "stdio",
-            host: str = "127.0.0.1", port: int = 8000) -> None:
-        """Start the MCP server with the given transport."""
-        if transport == "http":
-            self.log.info(f"Running MCP server over HTTP at {host}:{port}")
-            self.mcp.run(transport=transport,
-                         host=host,
-                         port=port,
-                         path=self.mcp_path,
-                         host_origin_protection=(True if self.allowed_hosts or self.allowed_origins
-                                                 else "auto"),
-                         allowed_hosts=list(self.allowed_hosts) or None,
-                         allowed_origins=list(self.allowed_origins) or None)
+    def run(self) -> None:
+        """Start the MCP server with its validated configuration."""
+        if self.config.transport == "http":
+            self.log.info(f"Running MCP server over HTTP at {self.config.host}:{self.config.port}")
+            self.mcp.run(transport=self.config.transport,
+                         host=self.config.host,
+                         port=self.config.port,
+                         path=self.config.mcp_path,
+                         host_origin_protection=self.config.host_origin_protection,
+                         allowed_hosts=list(self.config.allowed_hosts) or None,
+                         allowed_origins=list(self.config.allowed_origins) or None)
         else:
             self.log.info("Running MCP server over stdio")
-            self.mcp.run(transport=transport)
+            self.mcp.run(transport=self.config.transport)
 
     def close(self) -> None:
         """Release all session-owned policy artifacts."""
@@ -181,13 +145,6 @@ class SEToolsMCPServer:
         finally:
             self.close()
 
-    @staticmethod
-    def _validate_http_path(path: str, name: str) -> str:
-        """Validate one absolute HTTP route path."""
-        if not path.startswith("/") or path.startswith("//"):
-            raise ValueError(f"{name} must be an absolute HTTP path")
-        return path
-
     def _register_operational_routes(self) -> None:
         """Register unauthenticated liveness and readiness routes."""
         async def health(_request: Request) -> JSONResponse:
@@ -203,8 +160,8 @@ class SEToolsMCPServer:
                                             for result in results]},
                                 status_code=200 if ready else 503)
 
-        self.mcp.custom_route(self.health_path, methods=["GET"])(health)
-        self.mcp.custom_route(self.readiness_path, methods=["GET"])(readiness)
+        self.mcp.custom_route(self.config.health_path, methods=["GET"])(health)
+        self.mcp.custom_route(self.config.readiness_path, methods=["GET"])(readiness)
 
     async def _run_readiness_check(self, check: ReadinessCheck) -> ReadinessResult:
         """Run one readiness check without blocking the event loop."""
@@ -229,17 +186,18 @@ class SEToolsMCPServer:
         """Validate *max_results* and enforce the hosted ceiling."""
         if max_results < 1:
             raise ValueError(f"{name} must be at least 1")
-        if not self.allow_local_paths and max_results > self.max_query_results:
-            raise ValueError(f"{name} must be at most {self.max_query_results}")
+        if not self.config.local_paths_allowed and max_results > self.config.max_query_results:
+            raise ValueError(f"{name} must be at most {self.config.max_query_results}")
         return max_results
 
     def _bound_depth_limit(self, depth_limit: int | None) -> int | None:
         """Validate *depth_limit* and enforce the hosted depth ceiling."""
         if depth_limit is not None and depth_limit < 1:
             raise ValueError("depth_limit must be at least 1")
-        if not self.allow_local_paths:
-            if depth_limit is None or depth_limit > self.max_analysis_depth:
-                raise ValueError(f"depth_limit must be between 1 and {self.max_analysis_depth}")
+        if not self.config.local_paths_allowed:
+            if depth_limit is None or depth_limit > self.config.max_analysis_depth:
+                raise ValueError("depth_limit must be between 1 and "
+                                 f"{self.config.max_analysis_depth}")
         return depth_limit
 
     def _collect_results(self, query: PolicyQuery, *, max_results: int = 32768) -> str:
@@ -268,13 +226,13 @@ class SEToolsMCPServer:
             if session.closed:
                 raise ValueError("The session was released; retry the request.")
             if path is None:
-                if not self.allow_local_paths:
+                if not self.config.local_paths_allowed:
                     raise ValueError("A policy reference is required for file contexts.")
             else:
                 try:
                     artifact = session.get_artifact(path)
                 except KeyError:
-                    if not self.allow_local_paths:
+                    if not self.config.local_paths_allowed:
                         raise ValueError("Unknown policy reference.") from None
                 else:
                     if artifact.file_contexts_path is None:
@@ -309,7 +267,7 @@ class SEToolsMCPServer:
             try:
                 artifact = session.get_artifact(policy)
             except KeyError:
-                if not self.allow_local_paths:
+                if not self.config.local_paths_allowed:
                     raise ValueError("Unknown policy reference.") from None
             else:
                 path = str(artifact.policy_path)
@@ -330,11 +288,11 @@ class SEToolsMCPServer:
 
     def _load_default_policy(self) -> SELinuxPolicy:
         """Return the server default policy, which is shared read-only by all sessions."""
-        if self.default_policy is None and not self.allow_local_paths:
+        if self.config.default_policy is None and not self.config.local_paths_allowed:
             raise RuntimeError("A policy reference is required.")
         with self._default_policy_lock:
             if self._default_policy is None:
-                self._default_policy = SELinuxPolicy(self.default_policy)
+                self._default_policy = SELinuxPolicy(self.config.default_policy)
             return self._default_policy
 
     def _get_session_data(self) -> SessionData:
@@ -428,10 +386,11 @@ class SEToolsMCPServer:
         """
         if not versions:
             raise ValueError("At least one policy version is required.")
-        if len(versions) > self.max_policy_versions:
-            raise ValueError(f"At most {self.max_policy_versions} policy versions may be "
+        if len(versions) > self.config.max_policy_versions:
+            raise ValueError(f"At most {self.config.max_policy_versions} policy versions may be "
                              "loaded per request.")
-        if not self.allow_local_paths and isinstance(self.policy_provider, LocalPolicyProvider):
+        if (not self.config.local_paths_allowed
+                and isinstance(self.policy_provider, LocalPolicyProvider)):
             raise ValueError("Local policy acquisition is disabled.")
 
         owner = self.session_owner_provider.current_owner()
@@ -485,7 +444,7 @@ class SEToolsMCPServer:
         """Return statistics and metadata about an SELinux policy."""
         policy = self._load_policy(policy_path)
         result: Any = policy
-        if not self.allow_local_paths:
+        if not self.config.local_paths_allowed:
             result = json.loads(json.dumps(policy, cls=MCPEncoder))
             result.pop("path", None)
         return self._serialize_results(result, 1, False)
@@ -1385,7 +1344,7 @@ class SEToolsMCPServer:
         If the required dependency (NetworkX) is not installed, this method will
         raise a NameError.
         """
-        if perm_map_path is not None and not self.allow_local_paths:
+        if perm_map_path is not None and not self.config.local_paths_allowed:
             raise ValueError("Custom permission-map paths are disabled.")
         max_results = self._bound_max_results(max_results)
         depth_limit = self._bound_depth_limit(depth_limit)
