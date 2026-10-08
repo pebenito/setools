@@ -1,11 +1,13 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 
+import contextlib
 import enum
 import ipaddress
 import itertools
 import json
 import logging
-from typing import Annotated, Any, Final, Iterable, Literal
+import threading
+from typing import Annotated, Any, AsyncIterator, Final, Iterable, Literal
 
 try:
     from fastmcp import FastMCP
@@ -26,13 +28,18 @@ from .. import (BoolQuery, BoundsQuery, BoundsRuletype, CategoryQuery, CommonQue
                 RoleTypesQuery, SELinuxPolicy, SensitivityQuery, TERuleQuery, TERuletype,
                 TypeAttributeQuery, TypeQuery, UserQuery)
 from .encoder import MCPEncoder
-from .extension import AuditSink, NullAuditSink, ReadinessCheck
+from .extension import AuditEvent, AuditEventType, AuditSink, NullAuditSink, ReadinessCheck
 from .policy import PolicyProvider, SessionOwnerProvider
+from .providers import LocalPolicyProvider
+from .session import FastMCPSessionOwnerProvider, SessionCache, SessionData
 
 __all__ = ("MCPEncoder",)
 
 TOOL_PREFIX: Final[str] = "setools_tool_"
 PROMPT_PREFIX: Final[str] = "setools_prompt_"
+DEFAULT_MAX_SESSION_CACHES: Final[int] = 64
+DEFAULT_MAX_QUERY_RESULTS: Final[int] = 1000
+DEFAULT_MAX_ANALYSIS_DEPTH: Final[int] = 10
 DEFAULT_INSTRUCTIONS: Final[str] = ("SELinux policy analysis tools built on the setools library.  "
                                     "Supports querying TE/RBAC/MLS rules, enumerating policy "
                                     "components, domain transition analysis, information flow "
@@ -52,55 +59,58 @@ class DiffComponent(enum.StrEnum):
     MLS_RULES = enum.auto()
 
 
-class PolicyCache(dict):
-    """Simple cache for loaded policies"""
-    def __missing__(self, key: str | None) -> SELinuxPolicy:
-        self[key] = SELinuxPolicy(key)
-        return self[key]
-
-
-class FileContextsCache(dict):
-    """Simple cache for loaded file_contexts"""
-    def __missing__(self, key: str | None) -> FileContexts:
-        self[key] = FileContexts(None, key)
-        return self[key]
-
-
 class SEToolsMCPServer:
     """
     MCP server encapsulating all setools policy analysis tools.
 
-    All mutable state (policy cache, default policy path, FastMCP instance)
-    is held as instance attributes; there are no module-level globals.
+    Policy and file-context caches are isolated by MCP session. Direct method
+    calls outside an MCP request use a bounded local fallback cache.
     """
 
     def __init__(self, default_policy: str | None = None,
-                 auth: AuthProvider | None = None, *,
+                 auth: AuthProvider | None = None,
+                 max_session_caches: int = DEFAULT_MAX_SESSION_CACHES, *,
                  policy_provider: PolicyProvider | None = None,
                  session_owner_provider: SessionOwnerProvider | None = None,
+                 allow_local_paths: bool = True,
+                 max_query_results: int = DEFAULT_MAX_QUERY_RESULTS,
+                 max_analysis_depth: int = DEFAULT_MAX_ANALYSIS_DEPTH,
                  readiness_checks: Iterable[ReadinessCheck] = (),
                  audit_sink: AuditSink | None = None,
                  name: str = "setools",
                  instructions: str = DEFAULT_INSTRUCTIONS) -> None:
         self.log: logging.Logger = logging.getLogger(__name__)
         self.default_policy: str | None = default_policy
-        self.policy_provider: PolicyProvider | None = policy_provider
-        self.session_owner_provider: SessionOwnerProvider | None = session_owner_provider
+        self.policy_provider: PolicyProvider = (
+            policy_provider if policy_provider is not None else LocalPolicyProvider())
+        self.session_owner_provider: SessionOwnerProvider = (
+            session_owner_provider
+            if session_owner_provider is not None
+            else FastMCPSessionOwnerProvider())
+        self.allow_local_paths: bool = allow_local_paths
+        if max_query_results < 1:
+            raise ValueError("max_query_results must be at least 1")
+        if max_analysis_depth < 1:
+            raise ValueError("max_analysis_depth must be at least 1")
+        self.max_query_results: int = max_query_results
+        self.max_analysis_depth: int = max_analysis_depth
         self.readiness_checks: tuple[ReadinessCheck, ...] = tuple(readiness_checks)
         self.audit_sink: AuditSink = audit_sink if audit_sink is not None else NullAuditSink()
-        self._policy_cache: PolicyCache = PolicyCache()
-        self._fc_cache: FileContextsCache = FileContextsCache()
+        self._session_cache: SessionCache = SessionCache(max_session_caches,
+                                                         on_evict=self._emit_session_evicted)
+        self._default_policy: SELinuxPolicy | None = None
+        self._default_policy_lock: threading.Lock = threading.Lock()
 
-        try:
-            # Init the policy cache.  Load the default policy as the None key and its path.
-            policy = self._load_policy()
-            # Use policy.path to handle the case where default_policy is None.
-            self._policy_cache[policy.path] = policy
-            self.log.debug(f"Loaded default policy from {policy.path}")
-        except (OSError, RuntimeError) as err:
-            self.log.error(f"Failed to load default policy: {err}")
+        if self.default_policy is not None or self.allow_local_paths:
+            try:
+                policy = self._load_default_policy()
+                self.log.debug(f"Loaded default policy from {policy.path}")
+            except (OSError, RuntimeError) as err:
+                self.log.error(f"Failed to load default policy: {err}")
 
-        self.mcp: FastMCP = FastMCP(name, instructions=instructions, auth=auth)
+        self.mcp: FastMCP = FastMCP(name, instructions=instructions, auth=auth,
+                                    lifespan=self._lifespan,
+                                    mask_error_details=not self.allow_local_paths)
 
         for name in dir(self):
             if name.startswith(TOOL_PREFIX) and callable(getattr(self, name)):
@@ -120,36 +130,149 @@ class SEToolsMCPServer:
             self.log.info("Running MCP server over stdio")
             self.mcp.run(transport=transport)
 
+    def close(self) -> None:
+        """Release all session-owned policy artifacts."""
+        self._session_cache.cleanup()
+
     #
     # Helpers
     #
-    @staticmethod
-    def _collect_results(query: PolicyQuery, *, max_results: int = 32768) -> str:
+    @contextlib.asynccontextmanager
+    async def _lifespan(self, _server: "FastMCP") -> AsyncIterator[dict[str, Any]]:
+        """Release session-owned artifacts when the MCP server shuts down."""
+        try:
+            yield {}
+        finally:
+            self.close()
+
+    def _bound_max_results(self, max_results: int, *, name: str = "max_results") -> int:
+        """Validate *max_results* and enforce the hosted ceiling."""
+        if max_results < 1:
+            raise ValueError(f"{name} must be at least 1")
+        if not self.allow_local_paths and max_results > self.max_query_results:
+            raise ValueError(f"{name} must be at most {self.max_query_results}")
+        return max_results
+
+    def _bound_depth_limit(self, depth_limit: int | None) -> int | None:
+        """Validate *depth_limit* and enforce the hosted depth ceiling."""
+        if depth_limit is not None and depth_limit < 1:
+            raise ValueError("depth_limit must be at least 1")
+        if not self.allow_local_paths:
+            if depth_limit is None or depth_limit > self.max_analysis_depth:
+                raise ValueError(f"depth_limit must be between 1 and {self.max_analysis_depth}")
+        return depth_limit
+
+    def _collect_results(self, query: PolicyQuery, *, max_results: int = 32768) -> str:
         """
         Collect results from *query* up to *max_results* and return a JSON string.
 
         The returned object always has 'count', 'truncated', and 'result' fields.
         """
-        results: list[Any] = list(itertools.islice(query.results(), 0, max_results+1))
-        truncated: bool = len(results) > max_results
-        returned_count = len(results) if not truncated else max_results
-        return SEToolsMCPServer._serialize_results(results[:max_results],
-                                                   returned_count,
-                                                   truncated)
+        limit = self._bound_max_results(max_results)
+        results: list[Any] = list(itertools.islice(query.results(), 0, limit + 1))
+        truncated: bool = len(results) > limit
+        returned_count = len(results) if not truncated else limit
+        return self._serialize_results(results[:limit],
+                                       returned_count,
+                                       truncated)
 
     def _load_file_contexts(self, fc_path: str | None = None) -> FileContexts:
         """
-        Return a (cached) FileContexts for file_contexts at path *fc_path*.
-        If *fc_path* is None, uses the system default file_contexts.
+        Return a (cached) FileContexts for the reference or path *fc_path*.
+        If *fc_path* is empty, uses the system default file_contexts.
         """
-        return self._fc_cache[fc_path]
+        session = self._get_session_data()
+        path = fc_path or None
+        emit_version: str | None = None
+        with session.lock:
+            if session.closed:
+                raise ValueError("The session was released; retry the request.")
+            if path is None:
+                if not self.allow_local_paths:
+                    raise ValueError("A policy reference is required for file contexts.")
+            else:
+                try:
+                    artifact = session.get_artifact(path)
+                except KeyError:
+                    if not self.allow_local_paths:
+                        raise ValueError("Unknown policy reference.") from None
+                else:
+                    if artifact.file_contexts_path is None:
+                        raise ValueError("Policy reference has no file-contexts file.")
+                    emit_version = artifact.resolved_version
+                    path = str(artifact.file_contexts_path)
 
-    def _load_policy(self, policy: str | None = None) -> SELinuxPolicy:
+            try:
+                fc = session.file_contexts[path]
+            except KeyError:
+                fc = FileContexts(None, path)
+                session.file_contexts[path] = fc
+
+        if emit_version is not None and fc_path is not None:
+            self._emit_reference_used(fc_path, emit_version)
+        return fc
+
+    def _load_policy(self, policy: str | None = None, *, fresh: bool = False) -> SELinuxPolicy:
         """
-        Return a (cached) SELinuxPolicy for policy at path *policy*.
-        If *policy* is None, uses the server default or the running system policy.
+        Return a (cached) SELinuxPolicy for the reference or path *policy*.
+        If *policy* is empty, uses the server default or the running system policy.
         """
-        return self._policy_cache[policy if policy else self.default_policy]
+        if not policy:
+            return self._load_default_policy()
+
+        session = self._get_session_data()
+        path = policy
+        emit_version: str | None = None
+        with session.lock:
+            if session.closed:
+                raise ValueError("The session was released; retry the request.")
+            try:
+                artifact = session.get_artifact(policy)
+            except KeyError:
+                if not self.allow_local_paths:
+                    raise ValueError("Unknown policy reference.") from None
+            else:
+                path = str(artifact.policy_path)
+                emit_version = artifact.resolved_version
+
+            if fresh:
+                loaded = SELinuxPolicy(path)
+            else:
+                try:
+                    loaded = session.policies[path]
+                except KeyError:
+                    loaded = SELinuxPolicy(path)
+                    session.policies[path] = loaded
+
+        if emit_version is not None:
+            self._emit_reference_used(policy, emit_version)
+        return loaded
+
+    def _load_default_policy(self) -> SELinuxPolicy:
+        """Return the server default policy, which is shared read-only by all sessions."""
+        if self.default_policy is None and not self.allow_local_paths:
+            raise RuntimeError("A policy reference is required.")
+        with self._default_policy_lock:
+            if self._default_policy is None:
+                self._default_policy = SELinuxPolicy(self.default_policy)
+            return self._default_policy
+
+    def _get_session_data(self) -> SessionData:
+        """Return data owned by the active MCP session."""
+        return self._session_cache.get(self.session_owner_provider.current_owner())
+
+    def _emit_reference_used(self, reference: str, resolved_version: str) -> None:
+        """Emit a non-sensitive policy-reference audit event."""
+        owner = self.session_owner_provider.current_owner()
+        self.audit_sink.emit(AuditEvent(AuditEventType.policy_reference_used,
+                                        owner.session_id,
+                                        reference=reference,
+                                        resolved_version=resolved_version))
+
+    def _emit_session_evicted(self, session: SessionData) -> None:
+        """Emit an audit event for a session released by cache eviction."""
+        session_id = session.owner.session_id if session.owner is not None else ""
+        self.audit_sink.emit(AuditEvent(AuditEventType.session_evicted, session_id))
 
     @staticmethod
     def _serialize_results(result: Any, count: int, truncated: bool) -> str:
@@ -211,7 +334,12 @@ class SEToolsMCPServer:
         ] = None,
     ) -> str:
         """Return statistics and metadata about an SELinux policy."""
-        return self._serialize_results(self._load_policy(policy_path), 1, False)
+        policy = self._load_policy(policy_path)
+        result: Any = policy
+        if not self.allow_local_paths:
+            result = json.loads(json.dumps(policy, cls=MCPEncoder))
+            result.pop("path", None)
+        return self._serialize_results(result, 1, False)
 
     def setools_tool_search_te_rules(
         self,
@@ -1022,6 +1150,8 @@ class SEToolsMCPServer:
         If the required dependency (NetworkX) is not installed, this method will
         raise a NameError.
         """
+        max_results = self._bound_max_results(max_results)
+        depth_limit = self._bound_depth_limit(depth_limit)
         analysis = DomainTransitionAnalysis(self._load_policy(policy_path),
                                             source=source,
                                             target=target,
@@ -1106,6 +1236,10 @@ class SEToolsMCPServer:
         If the required dependency (NetworkX) is not installed, this method will
         raise a NameError.
         """
+        if perm_map_path is not None and not self.allow_local_paths:
+            raise ValueError("Custom permission-map paths are disabled.")
+        max_results = self._bound_max_results(max_results)
+        depth_limit = self._bound_depth_limit(depth_limit)
         analysis = InfoFlowAnalysis(self._load_policy(policy_path),
                                     PermissionMap(perm_map_path),
                                     source=source,
@@ -1135,8 +1269,8 @@ class SEToolsMCPServer:
 
     def setools_tool_diff_policies(
         self,
-        left_policy: Annotated[str, "Path to the left (baseline) policy file."],
-        right_policy: Annotated[str, "Path to the right (new) policy file."],
+        left_policy: Annotated[str, "Session reference or local path to the baseline policy."],
+        right_policy: Annotated[str, "Session reference or local path to the new policy."],
         components: Annotated[
             list[str] | None,
             "Components to compare.  If omitted, defaults to: te_rules, rbac_rules, "
@@ -1155,12 +1289,12 @@ class SEToolsMCPServer:
         returns the items that were added to the right policy, removed from the
         left policy, and (for TE allow rules) modified.
 
-        Policies are loaded fresh — not from the server cache — so this tool
-        can be used to compare any two policy files regardless of which policy
-        the server was started with.
+        Hosted servers require session-owned policy references. Local servers
+        also accept filesystem paths and reload those policies for comparison.
         """
-        left = SELinuxPolicy(left_policy)
-        right = SELinuxPolicy(right_policy)
+        max_per_component = self._bound_max_results(max_per_component, name="max_per_component")
+        left = self._load_policy(left_policy, fresh=True)
+        right = self._load_policy(right_policy, fresh=True)
         diff = PolicyDifference(left, right)
 
         selected: set[DiffComponent] = {DiffComponent(c) for c in components} if components \

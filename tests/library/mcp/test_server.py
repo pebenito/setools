@@ -8,12 +8,16 @@
 #
 # pylint: disable=invalid-name
 
-import json
 import enum
+import json
+from unittest.mock import Mock
 
+import anyio
+from fastmcp import Client
 import pytest
+from starlette.testclient import TestClient
 
-from setools.mcp.extension import AuditEvent, NullAuditSink, ReadinessResult
+from setools.mcp.extension import AuditEvent, AuditEventType, NullAuditSink, ReadinessResult
 from setools.mcp.policy import PolicyArtifact, SessionOwner
 from setools.mcp.server import DiffComponent, SEToolsMCPServer
 
@@ -43,11 +47,200 @@ def test_server_extension_defaults(compiled_policy) -> None:
     """Existing construction uses reusable no-op extension defaults."""
     server = SEToolsMCPServer(compiled_policy.path)
 
-    assert server.policy_provider is None
-    assert server.session_owner_provider is None
+    assert server.policy_provider is not None
+    assert server.session_owner_provider is not None
     assert not server.readiness_checks
     assert isinstance(server.audit_sink, NullAuditSink)
     assert server.mcp.auth is None
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_server_rejects_local_paths_when_disabled(compiled_policy) -> None:
+    """Hosted deployments can reject arbitrary server-local policy paths."""
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+
+    with pytest.raises(ValueError, match="Unknown policy reference"):
+        server._load_policy(compiled_policy.path)
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+@pytest.mark.parametrize("fc_path", [None, FILE_CONTEXTS, "/etc/passwd", "../private"])
+def test_hosted_file_contexts_reject_local_paths(compiled_policy, fc_path, monkeypatch) -> None:
+    """Hosted file-context lookup rejects local paths before accessing the filesystem."""
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    loader = Mock(side_effect=AssertionError("Filesystem loader must not run"))
+    monkeypatch.setattr("setools.mcp.server.FileContexts", loader)
+    with pytest.raises(ValueError, match="reference"):
+        server.setools_tool_lookup_file_context("/some/path", fc_path=fc_path)
+    loader.assert_not_called()
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_hosted_permission_map_rejects_local_paths(compiled_policy, monkeypatch) -> None:
+    """Hosted information-flow analysis rejects server-local permission maps."""
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    loader = Mock(side_effect=AssertionError("Permission-map loader must not run"))
+    monkeypatch.setattr("setools.mcp.server.PermissionMap", loader)
+    with pytest.raises(ValueError, match="permission-map paths are disabled"):
+        server.setools_tool_analyze_info_flow(perm_map_path="/etc/passwd")
+    loader.assert_not_called()
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_hosted_diff_and_contexts_use_owned_references(compiled_policy, monkeypatch) -> None:
+    """Hosted tools accept owned artifact references but reject raw policy paths."""
+    from pathlib import Path
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    reference = server._get_session_data().add_artifact(PolicyArtifact("1.2.3",
+                                                                       Path(compiled_policy.path),
+                                                                       Path(FILE_CONTEXTS)))
+    payload = assert_payload(server.setools_tool_diff_policies(reference,
+                                                               reference, components=["types"]))
+    assert payload["count"] == 0
+    result = assert_payload(server.setools_tool_lookup_file_context("/usr/bin/test0",
+                                                                    fc_path=reference))
+    assert result["result"] == "user0:object_r:type0:s4:c5"
+
+    loader = Mock(return_value=compiled_policy)
+    monkeypatch.setattr("setools.mcp.server.SELinuxPolicy", loader)
+    with pytest.raises(ValueError, match="Unknown policy reference"):
+        server.setools_tool_diff_policies(compiled_policy.path, reference)
+    loader.assert_not_called()
+    with pytest.raises(ValueError, match="Unknown policy reference"):
+        server.setools_tool_diff_policies(reference, compiled_policy.path)
+    loader.assert_called_once_with(str(compiled_policy.path))
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_session_caches_must_be_positive(compiled_policy) -> None:
+    """The server rejects an unusable session-cache capacity."""
+    with pytest.raises(ValueError, match="at least 1"):
+        SEToolsMCPServer(compiled_policy.path, max_session_caches=0)
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_default_policy_is_shared_and_selected_by_empty_path(compiled_policy) -> None:
+    """Sessions share one default policy, and an empty path selects it."""
+    owner_provider = Mock()
+    owner_provider.current_owner.return_value = SessionOwner("first")
+    server = SEToolsMCPServer(compiled_policy.path, session_owner_provider=owner_provider)
+    default = server._load_policy()
+
+    owner_provider.current_owner.return_value = SessionOwner("second")
+
+    assert server._load_policy("") is default
+    assert not server._get_session_data().policies
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_default_file_contexts_ignore_default_policy(compiled_policy, monkeypatch) -> None:
+    """Without fc_path, local servers use the system file_contexts, not the policy path."""
+    server = SEToolsMCPServer(compiled_policy.path)
+    loader = Mock()
+    monkeypatch.setattr("setools.mcp.server.FileContexts", loader)
+
+    server._load_file_contexts()
+
+    loader.assert_called_once_with(None, None)
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_eviction_and_shutdown_release_artifacts(compiled_policy, tmp_path) -> None:
+    """Evicted sessions are audited and remaining sessions are released at shutdown."""
+    cleaned: list[str] = []
+    sink = Mock()
+    owner_provider = Mock()
+    owner_provider.current_owner.return_value = SessionOwner("first")
+    server = SEToolsMCPServer(compiled_policy.path, max_session_caches=1,
+                              session_owner_provider=owner_provider, audit_sink=sink)
+    server._get_session_data().add_artifact(
+        PolicyArtifact("1.0.0", tmp_path, cleanup=lambda: cleaned.append("first")))
+
+    owner_provider.current_owner.return_value = SessionOwner("second")
+    server._get_session_data().add_artifact(
+        PolicyArtifact("2.0.0", tmp_path, cleanup=lambda: cleaned.append("second")))
+
+    assert cleaned == ["first"]
+    event = sink.emit.call_args.args[0]
+    assert (event.event_type, event.session_id) == (AuditEventType.session_evicted, "first")
+
+    with TestClient(server.mcp.http_app()):
+        pass
+
+    assert cleaned == ["first", "second"]
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_hosted_get_policy_info_omits_path(compiled_policy) -> None:
+    """Hosted policy metadata omits server-local filesystem paths."""
+    from pathlib import Path
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    reference = server._get_session_data().add_artifact(
+        PolicyArtifact("1.2.3", Path(compiled_policy.path)))
+
+    default_info = assert_payload(server.setools_tool_get_policy_info())["result"]
+    ref_info = assert_payload(server.setools_tool_get_policy_info(reference))["result"]
+
+    assert "path" not in default_info
+    assert "path" not in ref_info
+    assert ref_info["version"] > 0
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_hosted_server_masks_tool_error_details(compiled_policy, monkeypatch) -> None:
+    """Hosted MCP calls do not return raw internal exception strings to clients."""
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    monkeypatch.setattr(server, "_load_policy",
+                        Mock(side_effect=OSError("/var/cache/secret/policy.bin")))
+
+    async def call_tool() -> str:
+        async with Client(server.mcp) as client:
+            result = await client.call_tool("setools_tool_get_policy_info", {},
+                                            raise_on_error=False)
+            return result.content[0].text
+
+    text = anyio.run(call_tool)
+    assert "/var/cache/secret" not in text
+    assert "Error calling tool" in text
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_released_session_rejects_policy_and_context_loads(compiled_policy) -> None:
+    """Loading into an already-evicted session fails instead of mutating closed state."""
+    from pathlib import Path
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False)
+    session = server._get_session_data()
+    ref = session.add_artifact(PolicyArtifact("1.2.3", Path(compiled_policy.path),
+                                              Path(FILE_CONTEXTS)))
+    session.cleanup()
+    server._session_cache.get = Mock(return_value=session)  # type: ignore[method-assign]
+
+    with pytest.raises(ValueError, match="released"):
+        server._load_policy(ref)
+    with pytest.raises(ValueError, match="released"):
+        server._load_file_contexts(ref)
+    assert not session.policies
+    assert not session.file_contexts
+
+
+@pytest.mark.obj_args(SELINUX_POLICY)
+def test_hosted_query_and_depth_limits(compiled_policy) -> None:
+    """Hosted deployments enforce positive bounded result and analysis depth limits."""
+    server = SEToolsMCPServer(compiled_policy.path, allow_local_paths=False,
+                              max_query_results=5, max_analysis_depth=4)
+
+    with pytest.raises(ValueError, match="at least 1"):
+        server.setools_tool_search_te_rules(max_results=0)
+    with pytest.raises(ValueError, match="at most 5"):
+        server.setools_tool_search_te_rules(max_results=6)
+    with pytest.raises(ValueError, match="at most 5"):
+        server.setools_tool_diff_policies("", "", max_per_component=6)
+    with pytest.raises(ValueError, match="between 1 and 4"):
+        server.setools_tool_analyze_dta(source="t0", mode="TransitionsOut",
+                                        depth_limit=None, max_results=5)
+    with pytest.raises(ValueError, match="between 1 and 4"):
+        server.setools_tool_analyze_info_flow(source="t0", mode="FlowsOut",
+                                              depth_limit=5, max_results=5)
 
 
 @pytest.mark.obj_args(SELINUX_POLICY)
