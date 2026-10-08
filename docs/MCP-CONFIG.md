@@ -183,6 +183,41 @@ The configured Azure DevOps identity determines which packages the server can re
 application-wide Feed Reader access, authorization to call this SETools deployment consequently
 permits analysis of every package version exposed through the configured feed.
 
+## External providers
+
+Policy providers are selected by name rather than by Python module or class path. The generic
+launcher registers the built-in `local` and `azure_devops` providers, then discovers installed
+provider factories from the `setools.mcp.policy_providers` Python entry-point group. An installed
+provider can therefore add an Amazon S3, HTTP, or other acquisition mechanism without changing
+`MCPConfig` or `SEToolsMCPServer`.
+
+For example, a distribution providing a factory named `s3` declares an entry point similar to:
+
+```toml
+[project.entry-points."setools.mcp.policy_providers"]
+s3 = "example_setools_s3:S3PolicyProviderFactory"
+```
+
+Its configuration is then namespaced under the same registered name:
+
+```ini
+[policy_provider]
+type = s3
+
+[policy_provider.s3]
+bucket = example-policy-bucket
+key_prefix = compiled-policies
+```
+
+The entry-point name must match the factory's `name`. Duplicate or invalid provider names fail
+startup. Configuration cannot load arbitrary module or class paths.
+
+Providers that download directory trees should use the reusable artifact acquisition utilities.
+They create private staging directories, reject unsafe relative paths and symbolic links, enforce
+an aggregate byte limit, locate configured expected files, and clean up partial acquisitions.
+Provider-specific implementations remain responsible for authentication, transport security,
+immutable version semantics, and mapping their options to those safeguards.
+
 ## Session isolation
 
 Downloaded artifacts and loaded policy handles are owned by the authenticated caller (token
