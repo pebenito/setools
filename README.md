@@ -13,7 +13,7 @@ As such it contains a setup.py script that will install the tools.
 
 To run SETools basic command line tools, the following packages are required:
 
-* Python 3.10+
+* Python 3.11+
 * setuptools
 * libselinux
 * libsepol 3.9+
@@ -30,7 +30,7 @@ To run SETools graphical tools, the following packages are also required:
 
 To run SETools AI tools, the following packages are also required:
 
-* FastMCP 2.0+
+* FastMCP 4.0+
 
 To build SETools, the following development packages are required, in
 addition to the development packages from the above list:

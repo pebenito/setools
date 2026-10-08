@@ -1,7 +1,5 @@
 # SPDX-License-Identifier: LGPL-2.1-only
 
-from __future__ import annotations
-
 import enum
 import ipaddress
 import itertools
@@ -34,17 +32,17 @@ TOOL_PREFIX: Final[str] = "setools_tool_"
 PROMPT_PREFIX: Final[str] = "setools_prompt_"
 
 
-class DiffComponent(str, enum.Enum):
+class DiffComponent(enum.StrEnum):
 
     """Policy components that can be compared in a policy difference analysis."""
 
-    TE_RULES = "te_rules"
-    RBAC_RULES = "rbac_rules"
-    TYPES = "types"
-    ROLES = "roles"
-    USERS = "users"
-    PORTCONS = "portcons"
-    MLS_RULES = "mls_rules"
+    TE_RULES = enum.auto()
+    RBAC_RULES = enum.auto()
+    TYPES = enum.auto()
+    ROLES = enum.auto()
+    USERS = enum.auto()
+    PORTCONS = enum.auto()
+    MLS_RULES = enum.auto()
 
 
 class PolicyCache(dict):

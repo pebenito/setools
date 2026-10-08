@@ -38,14 +38,14 @@ classifiers = ["Development Status :: 6 - Mature",
                "Topic :: Utilities",
                "Typing :: Typed"]
 
-requires-python=">=3.10"
+requires-python=">=3.11"
 # also requires libsepol.so and libselinux.so.
 dependencies = []
 
 optional-dependencies.analysis = ["networkx>=2.6",
                                   "pygraphviz"]
 optional-dependencies.gui = ["PyQt6"]
-optional-dependencies.mcp = ["fastmcp>=2.0"]
+optional-dependencies.mcp = ["fastmcp>=4.0"]
 optional-dependencies.test = ["tox"]
 
 [tool.setuptools]

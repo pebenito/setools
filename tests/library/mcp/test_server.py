@@ -9,10 +9,11 @@
 # pylint: disable=invalid-name
 
 import json
+import enum
 
 import pytest
 
-from setools.mcp.server import SEToolsMCPServer
+from setools.mcp.server import DiffComponent, SEToolsMCPServer
 
 # Use existing test policies; no need to create new ones just for MCP server tests
 SELINUX_POLICY = "tests/library/policyrep/selinuxpolicy.conf"
@@ -23,6 +24,16 @@ DTA_POLICY = "tests/library/dta.conf"
 DIFF_LEFT_POLICY = "tests/library/diff_left.conf"
 DIFF_RIGHT_POLICY = "tests/library/diff_right.conf"
 FILE_CONTEXTS = "tests/library/policyrep/file_contexts"
+
+
+def test_diff_component_values() -> None:
+    """Diff components retain their public string values as a StrEnum."""
+    assert issubclass(DiffComponent, enum.StrEnum)
+    assert {component.value for component in DiffComponent} == {"te_rules",
+                                                                "rbac_rules",
+                                                                "types",
+                                                                "roles",
+                                                                "users", "portcons", "mls_rules"}
 
 
 @pytest.fixture(scope="class")
